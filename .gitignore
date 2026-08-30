@@ -1,0 +1,98 @@
+# ==========================================
+# VENLACPU - Git Ignore
+# ==========================================
+
+# CMake build output
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+
+# Compiled binaries / libraries
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dll
+*.dylib
+*.exe
+*.out
+
+# Debug / release build directories
+debug/
+release/
+Debug/
+Release/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Local test artifacts
+test_output/
+test_results/
+tmp/
+temp/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated documentation/build artifacts
+_site/
+dist/
+site/
+
+# Packaging artifacts
+*.egg-info/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# VENLACPU local development artifacts
+debug_autograd
