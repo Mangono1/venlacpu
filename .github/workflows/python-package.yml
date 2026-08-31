@@ -1,78 +1,101 @@
-name: Python Package
+name: VENLACPU CI
 
 on:
   push:
     branches:
       - main
       - master
-    tags:
-      - "v*"
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
+  cpp-and-python:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
 
-  build-and-test:
-    name: Build C++ Core and Python Package
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-13
+          - macos-14
+        python-version:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
-      - name: Setup CMake
+      - name: Set up CMake
         uses: lukka/get-cmake@latest
 
+      - name: Show toolchain
+        run: |
+          cmake --version
+          python --version
+          python -m pip --version
+
       - name: Configure C++
-        run: cmake -S . -B build
+        run: |
+          cmake -S . -B build -DVENLA_BUILD_TESTS=ON -DVENLA_BUILD_EXAMPLES=ON
 
       - name: Build C++
-        run: cmake --build build --parallel 2
+        run: |
+          cmake --build build --parallel 2
 
       - name: Run C++ tests
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          ctest --test-dir build --output-on-failure
 
-      - name: Install Python packaging tools
+      - name: Validate Python package
+        shell: bash
+        run: |
+          python -m py_compile python/venlacpu/__init__.py python/venlacpu/version.py
+
+      - name: Install packaging tools
         run: |
           python -m pip install --upgrade pip
           python -m pip install build twine
 
       - name: Build Python distributions
-        run: python -m build
+        run: |
+          python -m build
 
-      - name: Validate Python distributions
-        run: python -m twine check dist/*
+      - name: Check Python distributions
+        run: |
+          python -m twine check dist/*
 
-      - name: Upload distributions
+      - name: Upload Python distributions
         uses: actions/upload-artifact@v4
         with:
-          name: python-distributions
+          name: venlacpu-${{ matrix.os }}-py${{ matrix.python-version }}
           path: dist/*
 
-  publish:
-    name: Publish to PyPI
-    needs: build-and-test
-    if: startsWith(github.ref, 'refs/tags/v')
-
+  package-summary:
+    name: Package summary
+    needs:
+      - cpp-and-python
     runs-on: ubuntu-latest
 
-    permissions:
-      id-token: write
-
-    environment:
-      name: pypi
-      url: https://pypi.org/p/venlacpu
-
     steps:
-      - name: Download distributions
-        uses: actions/download-artifact@v4
-        with:
-          name: python-distributions
-          path: dist
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: CI completed
+        run: |
+          echo "VENLACPU CI completed successfully."
+          echo "C++ build and tests passed."
+          echo "Python package validation passed."
+          echo "Python distributions were built and checked."
+          echo "PyPI publishing is intentionally disabled."
