@@ -8,10 +8,15 @@
 #include "venla/nn/language_model.hpp"
 #include "venla/optim/optimizer.hpp"
 #include "venla/tensor/tensor.hpp"
+#include "venla/tokenizer/tokenizer.hpp"
 #include "venla/training/causal_lm.hpp"
 #include "venla/training/trainer.hpp"
 
 #include <cstdint>
+#include <string>
+#include <stdexcept>
+#include <fstream>
+#include <cstring>
 #include <vector>
 
 namespace py = pybind11;
@@ -102,6 +107,427 @@ std::vector<std::int64_t> tensor_to_int64(
 
 } // namespace
 
+// ============================================================
+// VENLACPU MODEL WEIGHT PERSISTENCE
+// ============================================================
+
+namespace {
+
+constexpr char VENLA_WEIGHTS_MAGIC[8] = {
+    'V', 'N', 'L', 'W', '0', '0', '0', '1'
+};
+
+constexpr std::uint32_t VENLA_WEIGHTS_VERSION = 1;
+
+template <typename T>
+void write_binary(
+    std::ofstream& file,
+    const T& value
+) {
+    file.write(
+        reinterpret_cast<const char*>(&value),
+        static_cast<std::streamsize>(sizeof(T))
+    );
+
+    if (!file) {
+        throw std::runtime_error(
+            "VENLACPU: gagal menulis file weights."
+        );
+    }
+}
+
+template <typename T>
+void read_binary(
+    std::ifstream& file,
+    T& value
+) {
+    file.read(
+        reinterpret_cast<char*>(&value),
+        static_cast<std::streamsize>(sizeof(T))
+    );
+
+    if (!file) {
+        throw std::runtime_error(
+            "VENLACPU: file weights rusak atau tidak lengkap."
+        );
+    }
+}
+
+void save_model_weights(
+    venla::LanguageModel& model,
+    const std::string& path
+) {
+    std::ofstream file(
+        path,
+        std::ios::binary |
+        std::ios::trunc
+    );
+
+    if (!file) {
+        throw std::runtime_error(
+            "VENLACPU: tidak dapat membuka file weights: " +
+            path
+        );
+    }
+
+    file.write(
+        VENLA_WEIGHTS_MAGIC,
+        sizeof(VENLA_WEIGHTS_MAGIC)
+    );
+
+    write_binary(
+        file,
+        VENLA_WEIGHTS_VERSION
+    );
+
+    const std::uint64_t vocab_size =
+        static_cast<std::uint64_t>(
+            model.vocab_size()
+        );
+
+    const std::uint64_t max_seq_len =
+        static_cast<std::uint64_t>(
+            model.max_seq_len()
+        );
+
+    const std::uint64_t embed_dim =
+        static_cast<std::uint64_t>(
+            model.embed_dim()
+        );
+
+    const std::uint64_t num_heads =
+        static_cast<std::uint64_t>(
+            model.num_heads()
+        );
+
+    const std::uint64_t hidden_dim =
+        static_cast<std::uint64_t>(
+            model.hidden_dim()
+        );
+
+    const std::uint64_t num_layers =
+        static_cast<std::uint64_t>(
+            model.num_layers()
+        );
+
+    const std::uint8_t use_bias =
+        model.has_bias() ? 1 : 0;
+
+    write_binary(file, vocab_size);
+    write_binary(file, max_seq_len);
+    write_binary(file, embed_dim);
+    write_binary(file, num_heads);
+    write_binary(file, hidden_dim);
+    write_binary(file, num_layers);
+    write_binary(file, use_bias);
+
+    const std::vector<venla::Tensor*> parameters =
+        model.parameters();
+
+    const std::uint64_t parameter_count =
+        static_cast<std::uint64_t>(
+            parameters.size()
+        );
+
+    write_binary(
+        file,
+        parameter_count
+    );
+
+    for (
+        std::size_t i = 0;
+        i < parameters.size();
+        ++i
+    ) {
+        venla::Tensor* tensor =
+            parameters[i];
+
+        if (tensor == nullptr) {
+            throw std::runtime_error(
+                "VENLACPU: parameter null."
+            );
+        }
+
+        if (!tensor->is_contiguous()) {
+            throw std::runtime_error(
+                "VENLACPU: parameter harus contiguous."
+            );
+        }
+
+        const std::uint32_t dtype =
+            static_cast<std::uint32_t>(
+                tensor->dtype()
+            );
+
+        const std::uint64_t ndim =
+            static_cast<std::uint64_t>(
+                tensor->ndim()
+            );
+
+        write_binary(
+            file,
+            dtype
+        );
+
+        write_binary(
+            file,
+            ndim
+        );
+
+        const auto& dimensions =
+            tensor->shape().dimensions();
+
+        for (
+            std::size_t dimension : dimensions
+        ) {
+            const std::uint64_t value =
+                static_cast<std::uint64_t>(
+                    dimension
+                );
+
+            write_binary(
+                file,
+                value
+            );
+        }
+
+        const std::uint64_t nbytes =
+            static_cast<std::uint64_t>(
+                tensor->nbytes()
+            );
+
+        write_binary(
+            file,
+            nbytes
+        );
+
+        if (nbytes > 0) {
+            file.write(
+                reinterpret_cast<const char*>(
+                    tensor->data()
+                ),
+                static_cast<std::streamsize>(
+                    nbytes
+                )
+            );
+
+            if (!file) {
+                throw std::runtime_error(
+                    "VENLACPU: gagal menulis parameter."
+                );
+            }
+        }
+    }
+}
+
+void load_model_weights(
+    venla::LanguageModel& model,
+    const std::string& path
+) {
+    std::ifstream file(
+        path,
+        std::ios::binary
+    );
+
+    if (!file) {
+        throw std::runtime_error(
+            "VENLACPU: tidak dapat membuka file weights: " +
+            path
+        );
+    }
+
+    char magic[
+        sizeof(VENLA_WEIGHTS_MAGIC)
+    ];
+
+    file.read(
+        magic,
+        sizeof(magic)
+    );
+
+    if (
+        std::memcmp(
+            magic,
+            VENLA_WEIGHTS_MAGIC,
+            sizeof(VENLA_WEIGHTS_MAGIC)
+        ) != 0
+    ) {
+        throw std::runtime_error(
+            "VENLACPU: magic weights tidak valid."
+        );
+    }
+
+    std::uint32_t version = 0;
+
+    read_binary(
+        file,
+        version
+    );
+
+    if (
+        version !=
+        VENLA_WEIGHTS_VERSION
+    ) {
+        throw std::runtime_error(
+            "VENLACPU: versi format weights tidak didukung."
+        );
+    }
+
+    std::uint64_t vocab_size = 0;
+    std::uint64_t max_seq_len = 0;
+    std::uint64_t embed_dim = 0;
+    std::uint64_t num_heads = 0;
+    std::uint64_t hidden_dim = 0;
+    std::uint64_t num_layers = 0;
+    std::uint8_t use_bias = 0;
+    std::uint64_t parameter_count = 0;
+
+    read_binary(file, vocab_size);
+    read_binary(file, max_seq_len);
+    read_binary(file, embed_dim);
+    read_binary(file, num_heads);
+    read_binary(file, hidden_dim);
+    read_binary(file, num_layers);
+    read_binary(file, use_bias);
+    read_binary(file, parameter_count);
+
+    if (
+        vocab_size != model.vocab_size() ||
+        max_seq_len != model.max_seq_len() ||
+        embed_dim != model.embed_dim() ||
+        num_heads != model.num_heads() ||
+        hidden_dim != model.hidden_dim() ||
+        num_layers != model.num_layers() ||
+        use_bias != (
+            model.has_bias() ? 1 : 0
+        )
+    ) {
+        throw std::runtime_error(
+            "VENLACPU: arsitektur model berbeda "
+            "dengan file weights."
+        );
+    }
+
+    const std::vector<venla::Tensor*> parameters =
+        model.parameters();
+
+    if (
+        parameter_count !=
+        parameters.size()
+    ) {
+        throw std::runtime_error(
+            "VENLACPU: jumlah parameter berbeda."
+        );
+    }
+
+    for (
+        std::size_t i = 0;
+        i < parameters.size();
+        ++i
+    ) {
+        venla::Tensor* tensor =
+            parameters[i];
+
+        std::uint32_t dtype = 0;
+        std::uint64_t ndim = 0;
+
+        read_binary(
+            file,
+            dtype
+        );
+
+        read_binary(
+            file,
+            ndim
+        );
+
+        std::vector<std::size_t> dimensions(
+            static_cast<std::size_t>(ndim)
+        );
+
+        for (
+            std::size_t d = 0;
+            d < dimensions.size();
+            ++d
+        ) {
+            std::uint64_t dimension = 0;
+
+            read_binary(
+                file,
+                dimension
+            );
+
+            dimensions[d] =
+                static_cast<std::size_t>(
+                    dimension
+                );
+        }
+
+        std::uint64_t nbytes = 0;
+
+        read_binary(
+            file,
+            nbytes
+        );
+
+        if (
+            static_cast<std::uint32_t>(
+                tensor->dtype()
+            ) != dtype
+        ) {
+            throw std::runtime_error(
+                "VENLACPU: dtype parameter berbeda."
+            );
+        }
+
+        if (
+            tensor->shape().dimensions()
+            != dimensions
+        ) {
+            throw std::runtime_error(
+                "VENLACPU: shape parameter berbeda."
+            );
+        }
+
+        if (
+            tensor->nbytes()
+            != static_cast<std::size_t>(
+                nbytes
+            )
+        ) {
+            throw std::runtime_error(
+                "VENLACPU: ukuran parameter berbeda."
+            );
+        }
+
+        if (!tensor->is_contiguous()) {
+            throw std::runtime_error(
+                "VENLACPU: parameter harus contiguous."
+            );
+        }
+
+        if (nbytes > 0) {
+            file.read(
+                reinterpret_cast<char*>(
+                    tensor->data()
+                ),
+                static_cast<std::streamsize>(
+                    nbytes
+                )
+            );
+
+            if (!file) {
+                throw std::runtime_error(
+                    "VENLACPU: gagal membaca parameter."
+                );
+            }
+        }
+    }
+}
+
+} // namespace
+
+
 PYBIND11_MODULE(_venlacpu, m) {
 
     m.doc() =
@@ -111,7 +537,7 @@ PYBIND11_MODULE(_venlacpu, m) {
     // VERSION
     // ========================================================
 
-    m.attr("__version__") = "0.1.0";
+    m.attr("__version__") = "1.0.0";
 
     // ========================================================
     // DEVICE
@@ -412,6 +838,14 @@ PYBIND11_MODULE(_venlacpu, m) {
         .def(
             "info",
             &venla::Tensor::info
+        )
+        .def(
+            "__repr__",
+            &venla::Tensor::info
+        )
+        .def(
+            "__str__",
+            &venla::Tensor::info
         );
 
     // ========================================================
@@ -432,6 +866,128 @@ PYBIND11_MODULE(_venlacpu, m) {
         "tensor_to_int64",
         &tensor_to_int64
     );
+
+    // ========================================================
+    // BPE TOKENIZER
+    // ========================================================
+
+    py::class_<venla::BPETokenizer::Config>(
+        m,
+        "BPETokenizerConfig"
+    )
+        .def(
+            py::init<>()
+        )
+        .def_readwrite(
+            "vocab_size",
+            &venla::BPETokenizer::Config::vocab_size
+        )
+        .def_readwrite(
+            "min_frequency",
+            &venla::BPETokenizer::Config::min_frequency
+        )
+        .def_readwrite(
+            "add_bos",
+            &venla::BPETokenizer::Config::add_bos
+        )
+        .def_readwrite(
+            "add_eos",
+            &venla::BPETokenizer::Config::add_eos
+        );
+
+    py::class_<venla::BPETokenizer>(
+        m,
+        "BPETokenizer"
+    )
+        .def(
+            py::init<>()
+        )
+        .def(
+            py::init<
+                const venla::BPETokenizer::Config&
+            >(),
+            py::arg("config")
+        )
+        .def(
+            "train",
+            py::overload_cast<
+                const std::string&
+            >(
+                &venla::BPETokenizer::train
+            ),
+            py::arg("corpus")
+        )
+        .def(
+            "train_documents",
+            py::overload_cast<
+                const std::vector<std::string>&
+            >(
+                &venla::BPETokenizer::train
+            ),
+            py::arg("documents")
+        )
+        .def(
+            "encode",
+            py::overload_cast<
+                const std::string&
+            >(
+                &venla::BPETokenizer::encode,
+                py::const_
+            ),
+            py::arg("text")
+        )
+        .def(
+            "encode",
+            py::overload_cast<
+                const std::string&,
+                bool,
+                bool
+            >(
+                &venla::BPETokenizer::encode,
+                py::const_
+            ),
+            py::arg("text"),
+            py::arg("add_bos"),
+            py::arg("add_eos")
+        )
+        .def(
+            "decode",
+            &venla::BPETokenizer::decode,
+            py::arg("ids")
+        )
+        .def(
+            "save",
+            &venla::BPETokenizer::save,
+            py::arg("path")
+        )
+        .def_static(
+            "load",
+            &venla::BPETokenizer::load,
+            py::arg("path")
+        )
+        .def(
+            "trained",
+            &venla::BPETokenizer::trained
+        )
+        .def(
+            "merge_count",
+            &venla::BPETokenizer::merge_count
+        )
+        .def(
+            "vocab_size",
+            [](const venla::BPETokenizer& tokenizer) {
+                return tokenizer.vocabulary().tokens().size();
+            }
+        )
+        .def(
+            "vocabulary",
+            [](const venla::BPETokenizer& tokenizer) {
+                return tokenizer.vocabulary().tokens();
+            }
+        );
+
+    m.attr("Tokenizer") =
+        m.attr("BPETokenizer");
 
     // ========================================================
     // LANGUAGE MODEL
@@ -495,6 +1051,32 @@ PYBIND11_MODULE(_venlacpu, m) {
         .def(
             "has_bias",
             &venla::LanguageModel::has_bias
+        )
+        .def(
+            "save_weights",
+            [](
+                venla::LanguageModel& model,
+                const std::string& path
+            ) {
+                save_model_weights(
+                    model,
+                    path
+                );
+            },
+            py::arg("path")
+        )
+        .def(
+            "load_weights",
+            [](
+                venla::LanguageModel& model,
+                const std::string& path
+            ) {
+                load_model_weights(
+                    model,
+                    path
+                );
+            },
+            py::arg("path")
         );
 
     // ========================================================
@@ -868,4 +1450,5 @@ PYBIND11_MODULE(_venlacpu, m) {
         py::arg("prompt"),
         py::arg("config") = venla::GenerationConfig()
     );
+
 }

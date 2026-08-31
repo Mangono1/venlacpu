@@ -1,6 +1,7 @@
 """VENLACPU Python package.
 
-CPU-first deep learning framework powered by the native C++17 core.
+CPU-first deep learning framework powered by the native
+C++17 core.
 """
 
 from .version import __version__, version
@@ -11,9 +12,59 @@ try:
 except ImportError:
     _native_available = False
 
+
+def generate_text(
+    model,
+    tokenizer,
+    text,
+    config=None,
+):
+    """Generate text using a native VENLACPU model.
+
+    Pipeline:
+
+        text
+          -> tokenizer.encode()
+          -> Tensor
+          -> native generate()
+          -> token IDs
+          -> tokenizer.decode()
+          -> text
+    """
+
+    if not _native_available:
+        raise RuntimeError(
+            "VENLACPU native extension is not available."
+        )
+
+    if config is None:
+        config = GenerationConfig()
+
+    token_ids = tokenizer.encode(text)
+
+    prompt = tensor_int32(
+        [int(item) for item in token_ids]
+    )
+
+    generated = generate(
+        model,
+        prompt,
+        config,
+    )
+
+    generated_ids = tensor_to_int64(
+        generated
+    )
+
+    return tokenizer.decode(
+        generated_ids
+    )
+
+
 __all__ = [
     "version",
     "__version__",
+    "generate_text",
 ]
 
 if _native_available:
@@ -24,6 +75,7 @@ if _native_available:
         and name not in {
             "version",
             "__version__",
+            "generate_text",
         }
     ]
 

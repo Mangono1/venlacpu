@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(VENLACPU
-    VERSION 0.1.0
+    VERSION 1.0.0
     LANGUAGES CXX
 )
 
@@ -110,6 +110,29 @@ if (VENLA_BUILD_TESTS)
     # --------------------------------------------------------
     # CORE
     # --------------------------------------------------------
+
+    # --------------------------------------------------------
+    # PYTHON / PUBLIC API SMOKE
+    #
+    # Memastikan API native yang akan diekspos pybind11
+    # benar-benar tersedia dan dapat digunakan.
+    # --------------------------------------------------------
+
+    add_executable(
+        venlacpu_python_binding_smoke
+        tests/python_binding_smoke.cpp
+    )
+
+    target_link_libraries(
+        venlacpu_python_binding_smoke
+        PRIVATE
+            venlacpu_core
+    )
+
+    add_test(
+        NAME venlacpu_python_binding_smoke
+        COMMAND venlacpu_python_binding_smoke
+    )
 
     add_executable(
         venlacpu_core_test
