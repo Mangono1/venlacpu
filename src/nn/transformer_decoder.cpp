@@ -244,6 +244,31 @@ TransformerDecoder::layer(
 }
 
 // ============================================================
+// PARAMETERS
+// ============================================================
+
+std::vector<Tensor*>
+TransformerDecoder::parameters() {
+
+    std::vector<Tensor*> result;
+
+    for (TransformerDecoderLayer& decoder_layer :
+         layers_) {
+
+        std::vector<Tensor*> layer_parameters =
+            decoder_layer.parameters();
+
+        result.insert(
+            result.end(),
+            layer_parameters.begin(),
+            layer_parameters.end()
+        );
+    }
+
+    return result;
+}
+
+// ============================================================
 // METADATA
 // ============================================================
 

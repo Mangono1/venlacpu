@@ -7,6 +7,7 @@
 #include "venla/tensor/tensor.hpp"
 
 #include <cstddef>
+#include <vector>
 
 namespace venla {
 
@@ -110,6 +111,22 @@ public:
     const Linear& lm_head() const;
 
     Linear& lm_head();
+
+    // --------------------------------------------------------
+    // Parameters
+    // --------------------------------------------------------
+    //
+    // Mengembalikan seluruh parameter trainable LanguageModel:
+    //
+    //   Embedding
+    //   Transformer Decoder
+    //   LM Head
+    //
+    // Positional encoding tidak termasuk karena bukan parameter
+    // trainable.
+    // --------------------------------------------------------
+
+    std::vector<Tensor*> parameters();
 
     // --------------------------------------------------------
     // Metadata

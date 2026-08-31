@@ -639,6 +639,22 @@ add_executable(
     tests/nn/test_language_model.cpp
 )
 
+add_executable(
+    venlacpu_language_model_parameters_test
+    tests/nn/test_language_model_parameters.cpp
+)
+
+target_link_libraries(
+    venlacpu_language_model_parameters_test
+    PRIVATE
+    venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_language_model_parameters_test
+    COMMAND venlacpu_language_model_parameters_test
+)
+
 target_link_libraries(
     venlacpu_language_model_test
     PRIVATE
@@ -668,4 +684,47 @@ target_link_libraries(
 add_test(
     NAME venlacpu_cross_entropy_loss_test
     COMMAND venlacpu_cross_entropy_loss_test
+)
+
+add_executable(
+    venlacpu_language_model_training_test
+    tests/nn/test_language_model_training.cpp
+)
+
+target_link_libraries(
+    venlacpu_language_model_training_test
+    PRIVATE
+    venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_language_model_training_test
+    COMMAND venlacpu_language_model_training_test
+)
+
+# ============================================================
+# TRAINING SYSTEM
+# ============================================================
+
+target_sources(
+    venlacpu_core
+    PRIVATE
+        src/training/causal_lm.cpp
+        src/training/trainer.cpp
+)
+
+add_executable(
+    venlacpu_training_system_test
+    tests/training/test_training_system.cpp
+)
+
+target_link_libraries(
+    venlacpu_training_system_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_training_system_test
+    COMMAND venlacpu_training_system_test
 )

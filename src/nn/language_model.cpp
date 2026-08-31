@@ -322,6 +322,54 @@ LanguageModel::lm_head() {
 }
 
 // ============================================================
+// PARAMETERS
+// ============================================================
+
+std::vector<Tensor*>
+LanguageModel::parameters() {
+
+    std::vector<Tensor*> result;
+
+    // --------------------------------------------------------
+    // Embedding
+    // --------------------------------------------------------
+
+    result.push_back(
+        &embedding_.weight()
+    );
+
+    // --------------------------------------------------------
+    // Transformer Decoder
+    // --------------------------------------------------------
+
+    std::vector<Tensor*> decoder_parameters =
+        decoder_.parameters();
+
+    result.insert(
+        result.end(),
+        decoder_parameters.begin(),
+        decoder_parameters.end()
+    );
+
+    // --------------------------------------------------------
+    // LM Head
+    // --------------------------------------------------------
+
+    result.push_back(
+        &lm_head_.weight()
+    );
+
+    if (use_bias_) {
+
+        result.push_back(
+            &lm_head_.bias()
+        );
+    }
+
+    return result;
+}
+
+// ============================================================
 // METADATA
 // ============================================================
 

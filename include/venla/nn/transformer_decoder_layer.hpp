@@ -7,6 +7,7 @@
 #include "venla/tensor/tensor.hpp"
 
 #include <cstddef>
+#include <vector>
 
 namespace venla {
 
@@ -122,6 +123,22 @@ public:
     const LayerNorm& norm2() const;
 
     LayerNorm& norm2();
+
+    // --------------------------------------------------------
+    // Parameters
+    // --------------------------------------------------------
+    //
+    // Mengembalikan seluruh parameter trainable layer:
+    //
+    //   MultiHeadAttention
+    //   FeedForward
+    //   LayerNorm 1
+    //   LayerNorm 2
+    //
+    // Bias MHA dan FFN hanya dikembalikan jika menggunakan bias.
+    // --------------------------------------------------------
+
+    std::vector<Tensor*> parameters();
 
     // --------------------------------------------------------
     // Metadata

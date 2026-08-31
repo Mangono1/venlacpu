@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <sstream>
+#include <vector>
 #include <stdexcept>
 
 namespace venla {
@@ -381,6 +382,112 @@ TransformerDecoderLayer::norm2() const {
 LayerNorm&
 TransformerDecoderLayer::norm2() {
     return norm2_;
+}
+
+// ============================================================
+// PARAMETERS
+// ============================================================
+
+std::vector<Tensor*>
+TransformerDecoderLayer::parameters() {
+
+    std::vector<Tensor*> result;
+
+    // --------------------------------------------------------
+    // Multi-Head Attention weights
+    // --------------------------------------------------------
+
+    result.push_back(
+        &self_attention_.q_weight()
+    );
+
+    result.push_back(
+        &self_attention_.k_weight()
+    );
+
+    result.push_back(
+        &self_attention_.v_weight()
+    );
+
+    result.push_back(
+        &self_attention_.out_weight()
+    );
+
+    // --------------------------------------------------------
+    // Multi-Head Attention biases
+    // --------------------------------------------------------
+
+    if (use_bias_) {
+
+        result.push_back(
+            &self_attention_.q_bias()
+        );
+
+        result.push_back(
+            &self_attention_.k_bias()
+        );
+
+        result.push_back(
+            &self_attention_.v_bias()
+        );
+
+        result.push_back(
+            &self_attention_.out_bias()
+        );
+    }
+
+    // --------------------------------------------------------
+    // Feed Forward weights
+    // --------------------------------------------------------
+
+    result.push_back(
+        &feed_forward_.input_weight()
+    );
+
+    result.push_back(
+        &feed_forward_.output_weight()
+    );
+
+    // --------------------------------------------------------
+    // Feed Forward biases
+    // --------------------------------------------------------
+
+    if (use_bias_) {
+
+        result.push_back(
+            &feed_forward_.input_bias()
+        );
+
+        result.push_back(
+            &feed_forward_.output_bias()
+        );
+    }
+
+    // --------------------------------------------------------
+    // LayerNorm 1
+    // --------------------------------------------------------
+
+    result.push_back(
+        &norm1_.weight()
+    );
+
+    result.push_back(
+        &norm1_.bias()
+    );
+
+    // --------------------------------------------------------
+    // LayerNorm 2
+    // --------------------------------------------------------
+
+    result.push_back(
+        &norm2_.weight()
+    );
+
+    result.push_back(
+        &norm2_.bias()
+    );
+
+    return result;
 }
 
 // ============================================================
