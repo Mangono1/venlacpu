@@ -75,7 +75,10 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      CIBW_BUILD: cp311-*
+      # Hanya build CPython 3.11 manylinux x86_64.
+      # Jangan gunakan cp311-* karena itu juga dapat
+      # menghasilkan target Linux lain seperti musllinux.
+      CIBW_BUILD: cp311-manylinux_x86_64
       CIBW_ARCHS_LINUX: x86_64
       CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
@@ -139,7 +142,8 @@ jobs:
     runs-on: ubuntu-24.04-arm
 
     env:
-      CIBW_BUILD: cp311-*
+      # Hanya build CPython 3.11 manylinux ARM64.
+      CIBW_BUILD: cp311-manylinux_aarch64
       CIBW_ARCHS_LINUX: aarch64
       CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
 

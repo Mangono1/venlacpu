@@ -49,7 +49,6 @@ Issues = "https://github.com/Mangono1/venlacpu/issues"
 
 [tool.scikit-build]
 wheel.packages = ["python/venlacpu"]
-wheel.py-api = "cp39"
 cmake.build-type = "Release"
 
 [tool.scikit-build.cmake.define]
