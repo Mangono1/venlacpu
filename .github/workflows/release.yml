@@ -30,18 +30,29 @@ jobs:
 
           - os: ubuntu-latest
             name: linux-x86_64
+            build: cp313-manylinux_x86_64
 
           - os: windows-latest
             name: windows-x86_64
+            build: cp313-win_amd64
 
           - os: macos-15
             name: macos-arm64
+            build: cp313-macosx_arm64
 
           - os: macos-15-intel
             name: macos-x86_64
+            build: cp313-macosx_x86_64
 
     env:
-      CIBW_BUILD: "cp313-*"
+      CIBW_BUILD: ${{ matrix.build }}
+      CIBW_BUILD_VERBOSITY: "1"
+      CIBW_TEST_SKIP: "*"
+
+      CMAKE_ARGS: >-
+        -DVENLA_BUILD_TESTS=OFF
+        -DVENLA_BUILD_EXAMPLES=OFF
+        -DVENLA_BUILD_PYTHON_BINDINGS=ON
 
     steps:
 
@@ -75,6 +86,7 @@ jobs:
 
           echo
           echo "Platform: ${{ matrix.name }}"
+          echo "Requested build: ${{ matrix.build }}"
           echo "Wheel count: $COUNT"
 
           if [ "$COUNT" -ne 1 ]; then
@@ -121,18 +133,22 @@ jobs:
           CIBW_BUILD: "cp313-android_arm64_v8a"
           CIBW_ARCHS_ANDROID: "arm64_v8a"
           CIBW_BUILD_VERBOSITY: "1"
+          CIBW_TEST_SKIP: "*"
           ANDROID_API_LEVEL: "27"
+
           CMAKE_ARGS: >-
             -DVENLA_BUILD_TESTS=OFF
             -DVENLA_BUILD_EXAMPLES=OFF
             -DVENLA_BUILD_PYTHON_BINDINGS=ON
+
         run: |
           echo "============================================================"
           echo "VENLACPU ANDROID ARM64"
           echo "============================================================"
 
           python --version
-          cibuildwheel --version
+
+          python -m cibuildwheel --help >/dev/null
 
           python -m cibuildwheel \
             --platform android \
@@ -150,6 +166,7 @@ jobs:
 
           COUNT=$(find wheelhouse -maxdepth 1 -name "*.whl" | wc -l)
 
+          echo
           echo "Wheel count: $COUNT"
 
           if [ "$COUNT" -ne 1 ]; then
@@ -294,6 +311,7 @@ jobs:
           if [ "$WHEEL_COUNT" -ne 5 ]; then
             echo
             echo "ERROR: Expected 5 wheels."
+            echo
             echo "Expected:"
             echo "  Linux x86_64"
             echo "  Windows x86_64"
@@ -324,10 +342,6 @@ jobs:
 
   # ============================================================
   # PUBLISH EVERYTHING TO PYPI
-  #
-  # ONE PUBLISH JOB.
-  # Desktop + Android + source distribution are published
-  # together after every build has succeeded.
   # ============================================================
 
   publish:
