@@ -315,11 +315,17 @@ jobs:
           echo
           echo "Checking required files..."
 
-          tar -tzf "$SOURCE" | grep -q "pyproject.toml"
-          tar -tzf "$SOURCE" | grep -q "CMakeLists.txt"
-          tar -tzf "$SOURCE" | grep -q "python/venlacpu"
-          tar -tzf "$SOURCE" | grep -q "src/"
-          tar -tzf "$SOURCE" | grep -q "include/"
+          CONTENTS=$(mktemp)
+
+          tar -tzf "$SOURCE" > "$CONTENTS"
+
+          grep -q "pyproject.toml" "$CONTENTS"
+          grep -q "CMakeLists.txt" "$CONTENTS"
+          grep -q "python/venlacpu" "$CONTENTS"
+          grep -q "src/" "$CONTENTS"
+          grep -q "include/" "$CONTENTS"
+
+          rm -f "$CONTENTS"
 
           echo
           echo "SOURCE PACKAGE CHECK: OK"
