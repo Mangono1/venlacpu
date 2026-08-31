@@ -537,7 +537,7 @@ PYBIND11_MODULE(_venlacpu, m) {
     // VERSION
     // ========================================================
 
-    m.attr("__version__") = "1.0.0";
+    m.attr("__version__") = "1.1.0";
 
     // ========================================================
     // DEVICE
@@ -846,6 +846,141 @@ PYBIND11_MODULE(_venlacpu, m) {
         .def(
             "__str__",
             &venla::Tensor::info
+        )
+
+        // ====================================================
+        // PYTHON DATA ACCESS
+        // ====================================================
+
+        .def(
+            "tolist",
+            [](const venla::Tensor& tensor) -> py::list {
+
+                py::list result;
+
+                const std::size_t size =
+                    tensor.numel();
+
+                if (
+                    tensor.dtype() ==
+                    venla::DType::Int32
+                ) {
+                    const auto* data =
+                        tensor.data_as<std::int32_t>();
+
+                    for (
+                        std::size_t i = 0;
+                        i < size;
+                        ++i
+                    ) {
+                        result.append(
+                            data[i]
+                        );
+                    }
+
+                    return result;
+                }
+
+                if (
+                    tensor.dtype() ==
+                    venla::DType::Int64
+                ) {
+                    const auto* data =
+                        tensor.data_as<std::int64_t>();
+
+                    for (
+                        std::size_t i = 0;
+                        i < size;
+                        ++i
+                    ) {
+                        result.append(
+                            data[i]
+                        );
+                    }
+
+                    return result;
+                }
+
+                if (
+                    tensor.dtype() ==
+                    venla::DType::Float32
+                ) {
+                    const auto* data =
+                        tensor.data_as<float>();
+
+                    for (
+                        std::size_t i = 0;
+                        i < size;
+                        ++i
+                    ) {
+                        result.append(
+                            data[i]
+                        );
+                    }
+
+                    return result;
+                }
+
+                throw std::runtime_error(
+                    "Tensor.tolist(): unsupported dtype"
+                );
+            }
+        )
+
+        .def(
+            "__getitem__",
+            [](const venla::Tensor& tensor,
+               std::size_t index) -> py::object {
+
+                if (
+                    index >= tensor.numel()
+                ) {
+                    throw py::index_error(
+                        "Tensor index out of bounds"
+                    );
+                }
+
+                if (
+                    tensor.dtype() ==
+                    venla::DType::Int32
+                ) {
+                    const auto* data =
+                        tensor.data_as<std::int32_t>();
+
+                    return py::cast(
+                        data[index]
+                    );
+                }
+
+                if (
+                    tensor.dtype() ==
+                    venla::DType::Int64
+                ) {
+                    const auto* data =
+                        tensor.data_as<std::int64_t>();
+
+                    return py::cast(
+                        data[index]
+                    );
+                }
+
+                if (
+                    tensor.dtype() ==
+                    venla::DType::Float32
+                ) {
+                    const auto* data =
+                        tensor.data_as<float>();
+
+                    return py::cast(
+                        data[index]
+                    );
+                }
+
+                throw std::runtime_error(
+                    "Tensor.__getitem__(): "
+                    "unsupported dtype"
+                );
+            }
         );
 
     // ========================================================
