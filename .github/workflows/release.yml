@@ -1,383 +1,163 @@
 name: VENLACPU Release
 
 on:
-  workflow_dispatch:
-
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-
-  # ============================================================
-  # DESKTOP WHEELS
-  # ============================================================
-
-  build-desktop-wheels:
-
-    name: Desktop Wheel - ${{ matrix.name }}
-
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-
-      matrix:
-        include:
-
-          - os: ubuntu-latest
-            name: linux-x86_64
-            build: cp313-manylinux_x86_64
-
-          - os: windows-latest
-            name: windows-x86_64
-            build: cp313-win_amd64
-
-          - os: macos-15
-            name: macos-arm64
-            build: cp313-macosx_arm64
-
-          - os: macos-15-intel
-            name: macos-x86_64
-            build: cp313-macosx_x86_64
-
-    env:
-      CIBW_BUILD: ${{ matrix.build }}
-      CIBW_BUILD_VERBOSITY: "1"
-      CIBW_TEST_SKIP: "*"
-
-      CMAKE_ARGS: >-
-        -DVENLA_BUILD_TESTS=OFF
-        -DVENLA_BUILD_EXAMPLES=OFF
-        -DVENLA_BUILD_PYTHON_BINDINGS=ON
+  build-windows:
+    name: Build Windows Wheel
+    runs-on: windows-latest
 
     steps:
-
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.13
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.11"
 
-      - name: Install cibuildwheel
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade cibuildwheel
+      - name: Upgrade build tools
+        run: python -m pip install --upgrade pip build wheel
 
-      - name: Build wheel
-        run: |
-          python -m cibuildwheel --output-dir wheelhouse
+      - name: Build package
+        run: python -m build
 
-      - name: Verify wheel
-        shell: bash
-        run: |
-          echo "============================================================"
-          echo "VENLACPU DESKTOP WHEEL"
-          echo "============================================================"
-
-          ls -lah wheelhouse/
-
-          COUNT=$(find wheelhouse -maxdepth 1 -name "*.whl" | wc -l)
-
-          echo
-          echo "Platform: ${{ matrix.name }}"
-          echo "Requested build: ${{ matrix.build }}"
-          echo "Wheel count: $COUNT"
-
-          if [ "$COUNT" -ne 1 ]; then
-            echo "ERROR: Expected exactly one wheel."
-            exit 1
-          fi
-
-      - name: Upload desktop wheel
+      - name: Upload Windows wheels
         uses: actions/upload-artifact@v4
         with:
-          name: venlacpu-wheel-${{ matrix.name }}
-          path: wheelhouse/*.whl
+          name: windows-wheels
+          path: dist/*.whl
           if-no-files-found: error
 
-
-  # ============================================================
-  # ANDROID ARM64 WHEEL
-  # ============================================================
-
-  build-android-wheel:
-
-    name: Android ARM64 - CPython 3.13
-
+  build-linux-x86_64:
+    name: Build Linux x86_64 Wheel
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.13
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.11"
 
-      - name: Install build tools
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade cibuildwheel twine
+      - name: Upgrade build tools
+        run: python -m pip install --upgrade pip build wheel
 
-      - name: Build Android ARM64 wheel
-        env:
-          CIBW_PLATFORM: android
-          CIBW_BUILD: "cp313-android_arm64_v8a"
-          CIBW_ARCHS_ANDROID: "arm64_v8a"
-          CIBW_BUILD_VERBOSITY: "1"
-          CIBW_TEST_SKIP: "*"
-          ANDROID_API_LEVEL: "27"
+      - name: Build package
+        run: python -m build
 
-          CMAKE_ARGS: >-
-            -DVENLA_BUILD_TESTS=OFF
-            -DVENLA_BUILD_EXAMPLES=OFF
-            -DVENLA_BUILD_PYTHON_BINDINGS=ON
-
-        run: |
-          echo "============================================================"
-          echo "VENLACPU ANDROID ARM64"
-          echo "============================================================"
-
-          python --version
-
-          python -m cibuildwheel --help >/dev/null
-
-          python -m cibuildwheel \
-            --platform android \
-            --archs arm64_v8a \
-            --output-dir wheelhouse
-
-      - name: Verify Android wheel
-        shell: bash
-        run: |
-          echo "============================================================"
-          echo "ANDROID WHEEL"
-          echo "============================================================"
-
-          ls -lah wheelhouse/
-
-          COUNT=$(find wheelhouse -maxdepth 1 -name "*.whl" | wc -l)
-
-          echo
-          echo "Wheel count: $COUNT"
-
-          if [ "$COUNT" -ne 1 ]; then
-            echo "ERROR: Expected exactly one Android wheel."
-            exit 1
-          fi
-
-          WHEEL=$(find wheelhouse -maxdepth 1 -name "*.whl" -type f | head -1)
-
-          echo
-          echo "Wheel:"
-          basename "$WHEEL"
-
-          case "$(basename "$WHEEL")" in
-            *android_*_arm64_v8a.whl)
-              echo "OK: Android ARM64 tag detected."
-              ;;
-            *)
-              echo "ERROR: Android ARM64 tag not detected."
-              exit 1
-              ;;
-          esac
-
-      - name: Verify Android wheel metadata
-        run: |
-          python -m twine check wheelhouse/*
-
-      - name: Upload Android wheel
+      - name: Upload Linux x86_64 wheels
         uses: actions/upload-artifact@v4
         with:
-          name: venlacpu-wheel-android-arm64
-          path: wheelhouse/*.whl
+          name: linux-x86_64-wheels
+          path: dist/*.whl
           if-no-files-found: error
 
-
-  # ============================================================
-  # SOURCE DISTRIBUTION
-  # ============================================================
-
-  build-source:
-
-    name: Source Distribution
-
-    runs-on: ubuntu-latest
+  build-linux-arm64:
+    name: Build Linux ARM64 Wheel
+    runs-on: ubuntu-24.04-arm
 
     steps:
-
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.13
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.11"
 
-      - name: Install build tools
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade build
+      - name: Upgrade build tools
+        run: python -m pip install --upgrade pip build wheel
 
-      - name: Build source distribution
-        run: |
-          mkdir -p dist
-          python -m build --sdist --outdir dist
+      - name: Build package
+        run: python -m build
 
-      - name: Show source distribution
-        run: |
-          echo "============================================================"
-          echo "VENLACPU SOURCE DISTRIBUTION"
-          echo "============================================================"
-
-          ls -lah dist/
-
-          COUNT=$(find dist -maxdepth 1 -name "*.tar.gz" | wc -l)
-
-          if [ "$COUNT" -ne 1 ]; then
-            echo "ERROR: Expected exactly one source distribution."
-            exit 1
-          fi
-
-      - name: Upload source distribution
+      - name: Upload Linux ARM64 wheels
         uses: actions/upload-artifact@v4
         with:
-          name: venlacpu-source
-          path: dist/*.tar.gz
+          name: linux-arm64-wheels
+          path: dist/*.whl
           if-no-files-found: error
 
+  build-macos:
+    name: Build macOS Wheel
+    runs-on: macos-latest
 
-  # ============================================================
-  # COLLECT EVERYTHING
-  # ============================================================
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  collect:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    name: Collect Release Distributions
+      - name: Upgrade build tools
+        run: python -m pip install --upgrade pip build wheel
 
+      - name: Build package
+        run: python -m build
+
+      - name: Upload macOS wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-wheels
+          path: dist/*.whl
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
     needs:
-      - build-desktop-wheels
-      - build-android-wheel
-      - build-source
+      - build-windows
+      - build-linux-x86_64
+      - build-linux-arm64
+      - build-macos
 
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Download all wheels
+      - name: Download Windows wheels
         uses: actions/download-artifact@v4
         with:
-          pattern: venlacpu-wheel-*
-          path: dist
-          merge-multiple: true
+          name: windows-wheels
+          path: release/windows
 
-      - name: Download source distribution
+      - name: Download Linux x86_64 wheels
         uses: actions/download-artifact@v4
         with:
-          name: venlacpu-source
-          path: dist
+          name: linux-x86_64-wheels
+          path: release/linux-x86_64
 
-      - name: Show final distributions
-        shell: bash
-        run: |
-          echo "============================================================"
-          echo "VENLACPU RELEASE DISTRIBUTIONS"
-          echo "============================================================"
-
-          find dist -maxdepth 1 -type f -printf "%f\n" | sort
-
-          echo
-          echo "TOTAL FILES:"
-          find dist -maxdepth 1 -type f | wc -l
-
-          echo
-          echo "WHEELS:"
-          find dist -maxdepth 1 -name "*.whl" -printf "  %f\n" | sort
-
-          echo
-          echo "SOURCE:"
-          find dist -maxdepth 1 -name "*.tar.gz" -printf "  %f\n" | sort
-
-          WHEEL_COUNT=$(find dist -maxdepth 1 -name "*.whl" | wc -l)
-
-          if [ "$WHEEL_COUNT" -ne 5 ]; then
-            echo
-            echo "ERROR: Expected 5 wheels."
-            echo
-            echo "Expected:"
-            echo "  Linux x86_64"
-            echo "  Windows x86_64"
-            echo "  macOS ARM64"
-            echo "  macOS x86_64"
-            echo "  Android ARM64"
-            exit 1
-          fi
-
-          SOURCE_COUNT=$(find dist -maxdepth 1 -name "*.tar.gz" | wc -l)
-
-          if [ "$SOURCE_COUNT" -ne 1 ]; then
-            echo
-            echo "ERROR: Expected exactly one source distribution."
-            exit 1
-          fi
-
-          echo
-          echo "ALL RELEASE DISTRIBUTIONS: OK"
-
-      - name: Upload complete release
-        uses: actions/upload-artifact@v4
-        with:
-          name: venlacpu-release
-          path: dist/*
-          if-no-files-found: error
-
-
-  # ============================================================
-  # PUBLISH EVERYTHING TO PYPI
-  # ============================================================
-
-  publish:
-
-    name: Publish VENLACPU to PyPI
-
-    needs:
-      - collect
-
-    runs-on: ubuntu-latest
-
-    environment:
-      name: pypi
-      url: https://pypi.org/p/venlacpu
-
-    permissions:
-      contents: read
-
-    steps:
-
-      - name: Download complete release
+      - name: Download Linux ARM64 wheels
         uses: actions/download-artifact@v4
         with:
-          name: venlacpu-release
-          path: dist
+          name: linux-arm64-wheels
+          path: release/linux-arm64
 
-      - name: Show distributions
-        shell: bash
-        run: |
-          echo "============================================================"
-          echo "VENLACPU PYPI RELEASE"
-          echo "============================================================"
-
-          find dist -maxdepth 1 -type f -printf "%f\n" | sort
-
-      - name: Publish VENLACPU to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Download macOS wheels
+        uses: actions/download-artifact@v4
         with:
-          packages-dir: dist/
+          name: macos-wheels
+          path: release/macos
+
+      - name: List release files
+        run: find release -type f -print
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release/**/*.whl
