@@ -10,6 +10,7 @@ permissions:
   contents: write
 
 jobs:
+
   build-windows:
     name: Build Windows Wheel
     runs-on: windows-latest
@@ -23,18 +24,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Upgrade build tools
-        run: python -m pip install --upgrade pip build wheel
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
 
       - name: Build package
-        run: python -m build
+        run: python -m build --wheel
 
-      - name: Upload Windows wheels
+      - name: Upload Windows wheel
         uses: actions/upload-artifact@v4
         with:
-          name: windows-wheels
+          name: windows-wheel
           path: dist/*.whl
           if-no-files-found: error
+
 
   build-linux-x86_64:
     name: Build Linux x86_64 Wheel
@@ -49,18 +53,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Upgrade build tools
-        run: python -m pip install --upgrade pip build wheel
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
 
       - name: Build package
-        run: python -m build
+        run: python -m build --wheel
 
-      - name: Upload Linux x86_64 wheels
+      - name: Upload Linux x86_64 wheel
         uses: actions/upload-artifact@v4
         with:
-          name: linux-x86_64-wheels
+          name: linux-x86_64-wheel
           path: dist/*.whl
           if-no-files-found: error
+
 
   build-linux-arm64:
     name: Build Linux ARM64 Wheel
@@ -75,18 +82,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Upgrade build tools
-        run: python -m pip install --upgrade pip build wheel
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
 
       - name: Build package
-        run: python -m build
+        run: python -m build --wheel
 
-      - name: Upload Linux ARM64 wheels
+      - name: Upload Linux ARM64 wheel
         uses: actions/upload-artifact@v4
         with:
-          name: linux-arm64-wheels
+          name: linux-arm64-wheel
           path: dist/*.whl
           if-no-files-found: error
+
 
   build-macos:
     name: Build macOS Wheel
@@ -101,18 +111,50 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Upgrade build tools
-        run: python -m pip install --upgrade pip build wheel
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
 
       - name: Build package
-        run: python -m build
+        run: python -m build --wheel
 
-      - name: Upload macOS wheels
+      - name: Upload macOS wheel
         uses: actions/upload-artifact@v4
         with:
-          name: macos-wheels
+          name: macos-wheel
           path: dist/*.whl
           if-no-files-found: error
+
+
+  build-source:
+    name: Build Source Distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+
+      - name: Build source distribution
+        run: python -m build --sdist
+
+      - name: Upload source distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-distribution
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
 
   release:
     name: Create GitHub Release
@@ -121,43 +163,108 @@ jobs:
       - build-linux-x86_64
       - build-linux-arm64
       - build-macos
+      - build-source
 
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download Windows wheels
+      - name: Download Windows wheel
         uses: actions/download-artifact@v4
         with:
-          name: windows-wheels
-          path: release/windows
+          name: windows-wheel
+          path: release
 
-      - name: Download Linux x86_64 wheels
+      - name: Download Linux x86_64 wheel
         uses: actions/download-artifact@v4
         with:
-          name: linux-x86_64-wheels
-          path: release/linux-x86_64
+          name: linux-x86_64-wheel
+          path: release
 
-      - name: Download Linux ARM64 wheels
+      - name: Download Linux ARM64 wheel
         uses: actions/download-artifact@v4
         with:
-          name: linux-arm64-wheels
-          path: release/linux-arm64
+          name: linux-arm64-wheel
+          path: release
 
-      - name: Download macOS wheels
+      - name: Download macOS wheel
         uses: actions/download-artifact@v4
         with:
-          name: macos-wheels
-          path: release/macos
+          name: macos-wheel
+          path: release
+
+      - name: Download source distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: source-distribution
+          path: release
 
       - name: List release files
-        run: find release -type f -print
+        run: |
+          echo "===== RELEASE FILES ====="
+          find release -type f -print
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            release/**/*.whl
+            release/*.whl
+            release/*.tar.gz
+
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs:
+      - build-windows
+      - build-linux-x86_64
+      - build-linux-arm64
+      - build-macos
+      - build-source
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/venlacpu
+
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download Windows wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-wheel
+          path: dist
+
+      - name: Download Linux x86_64 wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-x86_64-wheel
+          path: dist
+
+      - name: Download Linux ARM64 wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64-wheel
+          path: dist
+
+      - name: Download macOS wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-wheel
+          path: dist
+
+      - name: Download source distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: source-distribution
+          path: dist
+
+      - name: Verify distributions
+        run: |
+          echo "===== PYPI DISTRIBUTIONS ====="
+          ls -lh dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
