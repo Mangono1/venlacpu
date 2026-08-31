@@ -753,11 +753,39 @@ add_test(
 
 if (VENLA_BUILD_PYTHON_BINDINGS)
 
-    find_package(
-        Python
-        COMPONENTS Interpreter Development.Module
-        REQUIRED
-    )
+    # --------------------------------------------------------
+    # Python development files
+    #
+    # Android is special: Python extension modules must be
+    # explicitly linked against libpython3.x.so.
+    #
+    # Desktop platforms continue using Development.Module.
+    # Android additionally requires the Python shared library.
+    # --------------------------------------------------------
+
+    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+
+        find_package(
+            Python
+            COMPONENTS
+                Interpreter
+                Development
+                Development.Module
+                Development.Embed
+            REQUIRED
+        )
+
+    else()
+
+        find_package(
+            Python
+            COMPONENTS
+                Interpreter
+                Development.Module
+            REQUIRED
+        )
+
+    endif()
 
     # --------------------------------------------------------
     # pybind11
@@ -810,6 +838,42 @@ if (VENLA_BUILD_PYTHON_BINDINGS)
         PRIVATE
             venlacpu_core
     )
+
+    # --------------------------------------------------------
+    # ANDROID PYTHON LIBRARY
+    #
+    # PEP 738 requires Android Python extension modules to be
+    # explicitly linked against libpython3.x.so.
+    #
+    # Without this, symbols such as:
+    #
+    #   PyThreadState_Clear
+    #   PyThreadState_DeleteCurrent
+    #   PyThread_tss_set
+    #
+    # remain unresolved by the Android linker.
+    # --------------------------------------------------------
+
+    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+
+        if (TARGET Python::Python)
+
+            target_link_libraries(
+                _venlacpu
+                PRIVATE
+                    Python::Python
+            )
+
+        else()
+
+            message(
+                FATAL_ERROR
+                "Android build requires Python::Python / libpython3.x.so"
+            )
+
+        endif()
+
+    endif()
 
     target_include_directories(
         _venlacpu
