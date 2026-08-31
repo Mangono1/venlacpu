@@ -823,4 +823,22 @@ if (VENLA_BUILD_PYTHON_BINDINGS)
             cxx_std_17
     )
 
+    # ========================================================
+    # PYTHON WHEEL INSTALL
+    #
+    # The _venlacpu extension is a CMake MODULE target.
+    # It must be installed into the Python package directory
+    # so scikit-build-core includes it in the wheel.
+    #
+    # Without this rule the extension is successfully built
+    # but is omitted from the wheel.
+    # ========================================================
+
+    install(
+        TARGETS _venlacpu
+        LIBRARY DESTINATION venlacpu
+        RUNTIME DESTINATION venlacpu
+        ARCHIVE DESTINATION venlacpu
+    )
+
 endif()
