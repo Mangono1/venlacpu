@@ -39,6 +39,16 @@ add_library(venlacpu_core STATIC
     src/nn/mse_loss.cpp
         src/nn/embedding.cpp
         src/nn/positional_encoding.cpp
+        src/nn/layer_norm.cpp
+    src/nn/transformer_encoder_layer.cpp
+    src/nn/transformer_decoder.cpp
+    src/nn/transformer_decoder_layer.cpp
+    src/nn/transformer_encoder.cpp
+        src/nn/feed_forward.cpp
+        src/nn/multi_head_attention.cpp
+    src/nn/kv_cache.cpp
+    src/nn/language_model.cpp
+    src/nn/cross_entropy_loss.cpp
 )
 
 target_include_directories(venlacpu_core
@@ -411,4 +421,251 @@ target_link_libraries(
 add_test(
     NAME venlacpu_positional_encoding_test
     COMMAND venlacpu_positional_encoding_test
+)
+
+# ============================================================
+# LAYER NORMALIZATION
+# ============================================================
+
+add_executable(
+    venlacpu_layer_norm_test
+    tests/nn/test_layer_norm.cpp
+)
+
+target_link_libraries(
+    venlacpu_layer_norm_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_layer_norm_test
+    COMMAND venlacpu_layer_norm_test
+)
+
+
+# ============================================================
+# MULTI-HEAD SELF-ATTENTION
+# ============================================================
+
+add_executable(
+    venlacpu_multi_head_attention_test
+    tests/nn/test_multi_head_attention.cpp
+)
+
+target_link_libraries(
+    venlacpu_multi_head_attention_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_multi_head_attention_test
+    COMMAND venlacpu_multi_head_attention_test
+)
+
+
+# ============================================================
+# FEED FORWARD
+# ============================================================
+
+add_executable(
+    venlacpu_feed_forward_test
+    tests/nn/test_feed_forward.cpp
+)
+
+target_link_libraries(
+    venlacpu_feed_forward_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_feed_forward_test
+    COMMAND venlacpu_feed_forward_test
+)
+
+
+# ============================================================
+# TRANSFORMER ENCODER LAYER
+# ============================================================
+
+add_executable(
+    venlacpu_transformer_encoder_layer_test
+    tests/nn/test_transformer_encoder_layer.cpp
+)
+
+target_link_libraries(
+    venlacpu_transformer_encoder_layer_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_transformer_encoder_layer_test
+    COMMAND venlacpu_transformer_encoder_layer_test
+)
+
+
+# ============================================================
+# TRANSFORMER ENCODER
+# ============================================================
+
+add_executable(
+    venlacpu_transformer_encoder_test
+    tests/nn/test_transformer_encoder.cpp
+)
+
+target_link_libraries(
+    venlacpu_transformer_encoder_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_transformer_encoder_test
+    COMMAND venlacpu_transformer_encoder_test
+)
+
+
+# ============================================================
+# TRANSFORMER DECODER LAYER
+# ============================================================
+
+add_executable(
+    venlacpu_transformer_decoder_layer_test
+    tests/nn/test_transformer_decoder_layer.cpp
+)
+
+target_link_libraries(
+    venlacpu_transformer_decoder_layer_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_transformer_decoder_layer_test
+    COMMAND venlacpu_transformer_decoder_layer_test
+)
+
+
+# ============================================================
+# TRANSFORMER DECODER
+# ============================================================
+
+add_executable(
+    venlacpu_transformer_decoder_test
+    tests/nn/test_transformer_decoder.cpp
+)
+
+target_link_libraries(
+    venlacpu_transformer_decoder_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_transformer_decoder_test
+    COMMAND venlacpu_transformer_decoder_test
+)
+
+
+# ============================================================
+# KV CACHE
+# ============================================================
+
+add_executable(
+    venlacpu_kv_cache_test
+    tests/nn/test_kv_cache.cpp
+)
+
+target_link_libraries(
+    venlacpu_kv_cache_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_kv_cache_test
+    COMMAND venlacpu_kv_cache_test
+)
+
+# ============================================================
+# CACHED MULTI-HEAD ATTENTION
+# ============================================================
+
+add_executable(
+    venlacpu_cached_multi_head_attention_test
+    tests/nn/test_cached_multi_head_attention.cpp
+)
+
+target_link_libraries(
+    venlacpu_cached_multi_head_attention_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_cached_multi_head_attention_test
+    COMMAND venlacpu_cached_multi_head_attention_test
+)
+
+# ============================================================
+# CACHED TRANSFORMER DECODER LAYER
+# ============================================================
+
+add_executable(
+    venlacpu_transformer_decoder_layer_cached_test
+    tests/nn/test_transformer_decoder_layer_cached.cpp
+)
+
+target_link_libraries(
+    venlacpu_transformer_decoder_layer_cached_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_transformer_decoder_layer_cached_test
+    COMMAND venlacpu_transformer_decoder_layer_cached_test
+)
+
+# ============================================================
+# LANGUAGE MODEL
+# ============================================================
+
+add_executable(
+    venlacpu_language_model_test
+    tests/nn/test_language_model.cpp
+)
+
+target_link_libraries(
+    venlacpu_language_model_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_language_model_test
+    COMMAND venlacpu_language_model_test
+)
+
+# ============================================================
+# CROSS ENTROPY LOSS
+# ============================================================
+
+add_executable(
+    venlacpu_cross_entropy_loss_test
+    tests/nn/test_cross_entropy_loss.cpp
+)
+
+target_link_libraries(
+    venlacpu_cross_entropy_loss_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_cross_entropy_loss_test
+    COMMAND venlacpu_cross_entropy_loss_test
 )
