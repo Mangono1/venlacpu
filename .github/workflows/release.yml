@@ -6,12 +6,6 @@ on:
       - "v*"
 
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "GitHub release tag to publish (example: v0.2.1)"
-        required: true
-        default: "v0.2.1"
-        type: string
 
 permissions:
   contents: write
@@ -27,6 +21,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -40,8 +35,24 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install build
 
-      - name: Build package
-        run: python -m build --wheel
+      - name: Build Windows wheel
+        run: |
+          python -m build --wheel
+
+      - name: Verify Windows wheel
+        shell: bash
+        run: |
+          echo "=============================================="
+          echo "WINDOWS WHEEL"
+          echo "=============================================="
+          ls -lah dist/
+
+          COUNT=$(find dist -maxdepth 1 -name "*.whl" | wc -l)
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ERROR: Windows wheel tidak ditemukan."
+            exit 1
+          fi
 
       - name: Upload Windows wheel
         uses: actions/upload-artifact@v4
@@ -53,13 +64,24 @@ jobs:
 
   # ============================================================
   # LINUX X86_64
+  #
+  # PENTING:
+  # Jangan menggunakan "python -m build --wheel" langsung
+  # karena menghasilkan tag linux_x86_64 yang ditolak PyPI.
+  #
+  # cibuildwheel menghasilkan wheel manylinux yang valid.
   # ============================================================
 
   build-linux-x86_64:
-    name: Build Linux x86_64 Wheel
+    name: Build Linux x86_64 manylinux Wheel
     runs-on: ubuntu-latest
 
+    env:
+      CIBW_BUILD: cp311-*
+      CIBW_ARCHS_LINUX: x86_64
+
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -68,26 +90,51 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install build tools
+      - name: Install cibuildwheel
         run: |
           python -m pip install --upgrade pip
-          python -m pip install build
+          python -m pip install cibuildwheel
 
-      - name: Build package
-        run: python -m build --wheel
+      - name: Build manylinux wheel
+        run: |
+          python -m cibuildwheel --output-dir wheelhouse
+
+      - name: Verify Linux wheel
+        shell: bash
+        run: |
+          echo "=============================================="
+          echo "LINUX X86_64 WHEELS"
+          echo "=============================================="
+
+          ls -lah wheelhouse/
+
+          COUNT=$(find wheelhouse -maxdepth 1 -name "*.whl" | wc -l)
+
+          echo "Wheel count: $COUNT"
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ERROR: Linux manylinux wheel tidak ditemukan."
+            exit 1
+          fi
+
+          echo
+          echo "Wheel filenames:"
+          find wheelhouse -maxdepth 1 -name "*.whl" -print
 
       - name: Upload Linux x86_64 wheel
         uses: actions/upload-artifact@v4
         with:
           name: linux-x86_64-wheel
-          path: dist/*.whl
+          path: wheelhouse/*.whl
           if-no-files-found: error
 
 
   # ============================================================
   # LINUX ARM64
   #
-  # Dibuat khusus untuk GitHub Release.
+  # Untuk GitHub Release.
+  #
+  # Termux akan menggunakan source tar.gz dari PyPI.
   # ============================================================
 
   build-linux-arm64:
@@ -95,6 +142,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -108,8 +156,25 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install build
 
-      - name: Build package
-        run: python -m build --wheel
+      - name: Build Linux ARM64 wheel
+        run: |
+          python -m build --wheel
+
+      - name: Verify Linux ARM64 wheel
+        shell: bash
+        run: |
+          echo "=============================================="
+          echo "LINUX ARM64 WHEEL"
+          echo "=============================================="
+
+          ls -lah dist/
+
+          COUNT=$(find dist -maxdepth 1 -name "*.whl" | wc -l)
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ERROR: Linux ARM64 wheel tidak ditemukan."
+            exit 1
+          fi
 
       - name: Upload Linux ARM64 wheel
         uses: actions/upload-artifact@v4
@@ -128,6 +193,7 @@ jobs:
     runs-on: macos-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -141,8 +207,25 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install build
 
-      - name: Build package
-        run: python -m build --wheel
+      - name: Build macOS wheel
+        run: |
+          python -m build --wheel
+
+      - name: Verify macOS wheel
+        shell: bash
+        run: |
+          echo "=============================================="
+          echo "MACOS WHEEL"
+          echo "=============================================="
+
+          ls -lah dist/
+
+          COUNT=$(find dist -maxdepth 1 -name "*.whl" | wc -l)
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ERROR: macOS wheel tidak ditemukan."
+            exit 1
+          fi
 
       - name: Upload macOS wheel
         uses: actions/upload-artifact@v4
@@ -154,6 +237,8 @@ jobs:
 
   # ============================================================
   # SOURCE DISTRIBUTION
+  #
+  # INI YANG AKAN MENJADI JALUR TERMUX.
   # ============================================================
 
   build-source:
@@ -161,6 +246,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -175,7 +261,28 @@ jobs:
           python -m pip install build
 
       - name: Build source distribution
-        run: python -m build --sdist
+        run: |
+          python -m build --sdist
+
+      - name: Verify source distribution
+        shell: bash
+        run: |
+          echo "=============================================="
+          echo "SOURCE DISTRIBUTION"
+          echo "=============================================="
+
+          ls -lah dist/
+
+          COUNT=$(find dist -maxdepth 1 -name "*.tar.gz" | wc -l)
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ERROR: tar.gz tidak ditemukan."
+            exit 1
+          fi
+
+          echo
+          echo "Source package:"
+          find dist -maxdepth 1 -name "*.tar.gz" -print
 
       - name: Upload source distribution
         uses: actions/upload-artifact@v4
@@ -188,7 +295,7 @@ jobs:
   # ============================================================
   # GITHUB RELEASE
   #
-  # SEMUA hasil build masuk ke GitHub Release.
+  # SEMUA FILE BUILD MASUK KE RELEASE.
   # ============================================================
 
   release:
@@ -235,18 +342,23 @@ jobs:
           name: source-distribution
           path: release
 
-      - name: List release files
+      - name: Show release files
         shell: bash
         run: |
           echo "============================================================"
           echo "VENLACPU RELEASE FILES"
           echo "============================================================"
+
           find release -type f -print
+
+          echo
+          echo "TOTAL FILES:"
+          find release -type f | wc -l
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
             release/*.whl
@@ -256,19 +368,19 @@ jobs:
   # ============================================================
   # PYPI
   #
-  # Yang dikirim ke PyPI:
+  # YANG MASUK PYPI:
   #
-  # Windows
-  # Linux x86_64
-  # macOS
-  # Source
+  # 1. Windows wheel
+  # 2. Linux manylinux wheel
+  # 3. macOS wheel
+  # 4. Source tar.gz
   #
-  # ARM64 Linux tetap ada di GitHub Release,
-  # tetapi tidak dikirim oleh job ini.
+  # Linux ARM64 TIDAK dikirim ke PyPI.
+  # Termux memakai tar.gz.
   # ============================================================
 
   publish-pypi:
-    name: Publish Desktop Packages to PyPI
+    name: Publish to PyPI
 
     needs:
       - build-windows
@@ -293,7 +405,7 @@ jobs:
           name: windows-wheel
           path: dist
 
-      - name: Download Linux x86_64 wheel
+      - name: Download Linux manylinux wheel
         uses: actions/download-artifact@v4
         with:
           name: linux-x86_64-wheel
@@ -311,13 +423,22 @@ jobs:
           name: source-distribution
           path: dist
 
-      - name: List PyPI distributions
+      - name: Show PyPI files
         shell: bash
         run: |
           echo "============================================================"
-          echo "VENLACPU PYPI DISTRIBUTIONS"
+          echo "VENLACPU PYPI FILES"
           echo "============================================================"
-          ls -lah dist
+
+          find dist -type f -print
+
+          echo
+          echo "Wheel files:"
+          find dist -name "*.whl" -print
+
+          echo
+          echo "Source files:"
+          find dist -name "*.tar.gz" -print
 
       - name: Install validation tools
         run: |
@@ -325,7 +446,23 @@ jobs:
           python -m pip install twine
 
       - name: Validate distributions
-        run: python -m twine check dist/*
+        run: |
+          python -m twine check dist/*
+
+      - name: Verify Linux wheel tag
+        shell: bash
+        run: |
+          echo "Checking Linux wheel tags..."
+
+          if find dist -maxdepth 1 -name "*linux_x86_64.whl" | grep -q .; then
+            echo "ERROR: linux_x86_64 wheel masih ditemukan."
+            echo "PyPI akan menolaknya."
+            exit 1
+          fi
+
+          echo "Linux wheel tag OK."
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
