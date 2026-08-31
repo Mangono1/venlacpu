@@ -7,7 +7,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "venlacpu"
-version = "0.2.2"
+version = "0.2.3"
 description = "CPU-first deep learning framework with a native C++17 core."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -50,6 +50,26 @@ Issues = "https://github.com/Mangono1/venlacpu/issues"
 [tool.scikit-build]
 wheel.packages = ["python/venlacpu"]
 cmake.build-type = "Release"
+
+# ============================================================
+# SOURCE DISTRIBUTION
+#
+# Android / Termux tidak mempunyai wheel Android di PyPI.
+# pip akan mengambil source .tar.gz ini lalu membangun
+# VENLACPU secara lokal menggunakan CMake + pybind11.
+# ============================================================
+
+sdist.inclusion-mode = "manual"
+
+sdist.include = [
+    "pyproject.toml",
+    "README.md",
+    "CMakeLists.txt",
+    "MANIFEST.in",
+    "include/**",
+    "src/**",
+    "python/**"
+]
 
 [tool.scikit-build.cmake.define]
 VENLA_BUILD_TESTS = "OFF"

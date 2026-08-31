@@ -1,3 +1,7 @@
 include README.md
+include pyproject.toml
 include CMakeLists.txt
-recursive-include */hpt
+
+recursive-include include *
+recursive-include src *
+recursive-include python *
