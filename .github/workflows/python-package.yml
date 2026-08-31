@@ -1,14 +1,13 @@
-
-name: VENLACPU CI and Wheels
+name: VENLACPU Python Package CI
 
 on:
   push:
     branches:
       - main
       - master
-    tags:
-      - "v*"
+
   pull_request:
+
   workflow_dispatch:
 
 permissions:
@@ -16,42 +15,13 @@ permissions:
 
 jobs:
 
-  cpp-tests:
-
-    name: C++ Tests / ${{ matrix.os }}
-
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-13
-          - macos-14
-
-    steps:
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up CMake
-        uses: lukka/get-cmake@latest
-
-      - name: Configure C++
-        run: |
-          cmake -S . -B build \
-            -DVENLA_BUILD_TESTS=ON \
-            -DVENLA_BUILD_EXAMPLES=ON
-
-      - name: Build C++
-        run: |
-          cmake --build build --parallel 2
-
-      - name: Run C++ tests
-        run: |
-          ctest --test-dir build --output-on-failure
+  # ============================================================
+  # PYTHON WHEELS
+  #
+  # This workflow is only responsible for Python package wheels.
+  # C++ test matrix is intentionally removed from this workflow.
+  # The native C++ extension is compiled as part of the wheel build.
+  # ============================================================
 
   python-wheels:
 
@@ -61,6 +31,7 @@ jobs:
 
     strategy:
       fail-fast: false
+
       matrix:
         os:
           - ubuntu-latest
@@ -87,13 +58,20 @@ jobs:
         env:
           CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-*"
           CIBW_SKIP: "*-musllinux_*"
+
           CIBW_TEST_REQUIRES: "pytest"
+
           CIBW_TEST_COMMAND: >
             python -c
             "import venlacpu;
             print('VENLACPU', venlacpu.__version__);
             print('Native binding import OK')"
-          CMAKE_ARGS: "-DVENLA_BUILD_TESTS=OFF -DVENLA_BUILD_EXAMPLES=OFF -DVENLA_BUILD_PYTHON_BINDINGS=ON"
+
+          CMAKE_ARGS: >-
+            -DVENLA_BUILD_TESTS=OFF
+            -DVENLA_BUILD_EXAMPLES=OFF
+            -DVENLA_BUILD_PYTHON_BINDINGS=ON
+
         run: |
           python -m cibuildwheel --output-dir wheelhouse
 
@@ -102,11 +80,39 @@ jobs:
           python -m pip install twine
           python -m twine check wheelhouse/*
 
+      - name: Verify wheel files
+        shell: bash
+        run: |
+          echo "============================================================"
+          echo "VENLACPU PYTHON WHEELS"
+          echo "============================================================"
+
+          ls -lah wheelhouse/
+
+          COUNT=$(find wheelhouse -maxdepth 1 -name "*.whl" | wc -l)
+
+          echo
+          echo "Wheel count: $COUNT"
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ERROR: No wheels were created."
+            exit 1
+          fi
+
+          echo
+          echo "PYTHON WHEELS: OK"
+
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: venlacpu-wheels-${{ matrix.os }}
-          path: wheelhouse/*
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
+
+  # ============================================================
+  # SOURCE PACKAGE
+  # ============================================================
 
   source-package:
 
@@ -137,18 +143,45 @@ jobs:
         run: |
           python -m twine check dist/*
 
+      - name: Verify source distribution
+        shell: bash
+        run: |
+          echo "============================================================"
+          echo "VENLACPU SOURCE PACKAGE"
+          echo "============================================================"
+
+          ls -lah dist/
+
+          COUNT=$(find dist -maxdepth 1 -name "*.tar.gz" | wc -l)
+
+          echo
+          echo "Source distribution count: $COUNT"
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ERROR: Source distribution was not created."
+            exit 1
+          fi
+
+          echo
+          echo "SOURCE PACKAGE: OK"
+
       - name: Upload source distribution
         uses: actions/upload-artifact@v4
         with:
           name: venlacpu-source
-          path: dist/*
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+
+  # ============================================================
+  # PACKAGE SUMMARY
+  # ============================================================
 
   package-summary:
 
     name: Package Summary
 
     needs:
-      - cpp-tests
       - python-wheels
       - source-package
 
@@ -158,11 +191,14 @@ jobs:
 
       - name: Success
         run: |
-          echo "=============================================="
-          echo "VENLACPU PACKAGE PIPELINE PASSED"
-          echo "=============================================="
-          echo "C++ tests passed."
-          echo "Native Python wheels were built."
-          echo "Source distribution was built."
-          echo "Wheels passed twine validation."
-          echo "PyPI publishing is not enabled yet."
+          echo "============================================================"
+          echo "VENLACPU PYTHON PACKAGE PIPELINE PASSED"
+          echo "============================================================"
+
+          echo
+          echo "Python wheels built successfully."
+          echo "Source distribution built successfully."
+          echo "Wheel metadata passed twine validation."
+          echo
+          echo "C++ test matrix is not part of this workflow."
+          echo "PyPI publishing is handled by release.yml."
