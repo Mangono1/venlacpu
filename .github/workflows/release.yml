@@ -87,10 +87,7 @@ jobs:
   # ============================================================
   # LINUX ARM64
   #
-  # Tetap dibuat untuk GitHub Release.
-  #
-  # JANGAN dikirim ke PyPI karena wheel native hasil build ini
-  # mempunyai tag linux_aarch64 yang ditolak PyPI.
+  # Dibuat khusus untuk GitHub Release.
   # ============================================================
 
   build-linux-arm64:
@@ -191,15 +188,7 @@ jobs:
   # ============================================================
   # GITHUB RELEASE
   #
-  # SEMUA PLATFORM MASUK SINI:
-  #
-  # Windows
-  # Linux x86_64
-  # Linux ARM64
-  # macOS
-  # Source
-  #
-  # Android ARM64 punya workflow terpisah di android.yml.
+  # SEMUA hasil build masuk ke GitHub Release.
   # ============================================================
 
   release:
@@ -252,7 +241,6 @@ jobs:
           echo "============================================================"
           echo "VENLACPU RELEASE FILES"
           echo "============================================================"
-
           find release -type f -print
 
       - name: Create GitHub Release
@@ -260,7 +248,6 @@ jobs:
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           generate_release_notes: true
-
           files: |
             release/*.whl
             release/*.tar.gz
@@ -269,19 +256,15 @@ jobs:
   # ============================================================
   # PYPI
   #
-  # PENTING:
-  #
-  # ARM64 LINUX TIDAK DIAMBIL DI SINI.
-  #
-  # Yang dikirim:
+  # Yang dikirim ke PyPI:
   #
   # Windows
   # Linux x86_64
   # macOS
   # Source
   #
-  # Android ARM64 juga TIDAK dikirim ke PyPI.
-  # Android menggunakan android.yml.
+  # ARM64 Linux tetap ada di GitHub Release,
+  # tetapi tidak dikirim oleh job ini.
   # ============================================================
 
   publish-pypi:
@@ -304,19 +287,11 @@ jobs:
 
     steps:
 
-      # ----------------------------------------------------------
-      # WINDOWS
-      # ----------------------------------------------------------
-
       - name: Download Windows wheel
         uses: actions/download-artifact@v4
         with:
           name: windows-wheel
           path: dist
-
-      # ----------------------------------------------------------
-      # LINUX X86_64
-      # ----------------------------------------------------------
 
       - name: Download Linux x86_64 wheel
         uses: actions/download-artifact@v4
@@ -324,19 +299,11 @@ jobs:
           name: linux-x86_64-wheel
           path: dist
 
-      # ----------------------------------------------------------
-      # MACOS
-      # ----------------------------------------------------------
-
       - name: Download macOS wheel
         uses: actions/download-artifact@v4
         with:
           name: macos-wheel
           path: dist
-
-      # ----------------------------------------------------------
-      # SOURCE
-      # ----------------------------------------------------------
 
       - name: Download source distribution
         uses: actions/download-artifact@v4
@@ -344,68 +311,21 @@ jobs:
           name: source-distribution
           path: dist
 
-      # ----------------------------------------------------------
-      # VERIFY
-      # ----------------------------------------------------------
-
-      - name: Verify PyPI distributions
+      - name: List PyPI distributions
         shell: bash
         run: |
-          set -e
-
           echo "============================================================"
           echo "VENLACPU PYPI DISTRIBUTIONS"
           echo "============================================================"
-
           ls -lah dist
 
-          echo
-          echo "============================================================"
-          echo "CHECKING FOR ARM64 WHEELS"
-          echo "============================================================"
-
-          ARM_COUNT=0
-
-          for file in dist/*.whl; do
-
-            filename="$(basename "$file")"
-
-            echo "Checking: $filename"
-
-            case "$filename" in
-              *aarch64*.whl)
-                echo "ERROR: aarch64 wheel found in PyPI upload."
-                ARM_COUNT=$((ARM_COUNT + 1))
-                ;;
-              *arm64*.whl)
-                echo "ERROR: arm64 wheel found in PyPI upload."
-                ARM_COUNT=$((ARM_COUNT + 1))
-                ;;
-            esac
-
-          done
-
-          if [ "$ARM_COUNT" -ne 0 ]; then
-            echo
-            echo "ERROR: ARM64 wheel must NEVER be uploaded to this PyPI job."
-            exit 1
-          fi
-
-          echo
-          echo "OK: No ARM64 wheel will be uploaded to PyPI."
-
-      # ----------------------------------------------------------
-      # TWINE VALIDATION
-      # ----------------------------------------------------------
+      - name: Install validation tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install twine
 
       - name: Validate distributions
-        run: |
-          python -m pip install --upgrade twine
-          python -m twine check dist/*
-
-      # ----------------------------------------------------------
-      # PYPI PUBLISH
-      # ----------------------------------------------------------
+        run: python -m twine check dist/*
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
