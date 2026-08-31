@@ -11,6 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(VENLA_BUILD_TESTS "Build VENLACPU tests" ON)
 option(VENLA_BUILD_EXAMPLES "Build VENLACPU examples" ON)
+option(VENLA_BUILD_PYTHON_BINDINGS "Build Python pybind11 bindings" OFF)
 
 # ============================================================
 # VENLACPU CORE
@@ -54,6 +55,22 @@ add_library(venlacpu_core STATIC
 target_include_directories(venlacpu_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# ============================================================
+# POSITION INDEPENDENT CODE
+#
+# VENLACPU core is a static library that can also be linked
+# into the Python shared module (_venlacpu).
+#
+# This is required on platforms such as Linux, Android/Termux,
+# macOS and other ELF/Mach-O environments.
+# ============================================================
+
+set_target_properties(
+    venlacpu_core
+    PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
 )
 
 target_compile_features(
@@ -728,3 +745,82 @@ add_test(
     NAME venlacpu_training_system_test
     COMMAND venlacpu_training_system_test
 )
+
+
+# ============================================================
+# PYTHON BINDINGS
+# ============================================================
+
+if (VENLA_BUILD_PYTHON_BINDINGS)
+
+    find_package(
+        Python
+        COMPONENTS Interpreter Development.Module
+        REQUIRED
+    )
+
+    # --------------------------------------------------------
+    # pybind11
+    #
+    # Prefer the CMake package directory exposed by the
+    # installed Python pybind11 package. This works across
+    # Linux, macOS, Windows and Termux.
+    # --------------------------------------------------------
+
+    execute_process(
+        COMMAND
+            ${Python_EXECUTABLE}
+            -m
+            pybind11
+            --cmakedir
+        OUTPUT_VARIABLE
+            PYBIND11_CMAKE_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE
+            PYBIND11_CMAKE_RESULT
+    )
+
+    if (
+        PYBIND11_CMAKE_RESULT EQUAL 0
+        AND
+        EXISTS "${PYBIND11_CMAKE_DIR}"
+    )
+
+        list(
+            APPEND
+            CMAKE_PREFIX_PATH
+            "${PYBIND11_CMAKE_DIR}"
+        )
+
+    endif()
+
+    find_package(
+        pybind11
+        CONFIG
+        REQUIRED
+    )
+
+    pybind11_add_module(
+        _venlacpu
+        python/bindings.cpp
+    )
+
+    target_link_libraries(
+        _venlacpu
+        PRIVATE
+            venlacpu_core
+    )
+
+    target_include_directories(
+        _venlacpu
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+
+    target_compile_features(
+        _venlacpu
+        PRIVATE
+            cxx_std_17
+    )
+
+endif()
