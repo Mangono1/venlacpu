@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "venlacpu"
+version = "0.1.0"
+description = "CPU-first deep learning framework with a native C++17 core."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "License to be finalized before the first public release"}
+authors = [
+    {name = "Frandika Imam Arifin"}
+]
+keywords = [
+    "deep-learning",
+    "machine-learning",
+    "neural-network",
+    "tensor",
+    "autograd",
+    "transformer",
+    "language-model",
+    "cpu",
+    "cpp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX",
+    "Operating System :: Microsoft :: Windows"]
+
+[account.urls]
+Homepage = "https://github.com/Mangono1/venlacpu"
+Repository = "https://github.com/Mangono1/venlacpu"
+Issues = "https://github.com/Mangono1/venlacpu/issues"
+
+[tool.setuptools]
+package-dir = {"" = "python"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["python"]
