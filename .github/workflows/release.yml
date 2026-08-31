@@ -1,11 +1,11 @@
-name: VENLACPU - Build and Publish Wheels
+name: VENLACPU Release
 
 on:
+  workflow_dispatch:
+
   push:
     tags:
       - "v*"
-
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,14 +13,12 @@ permissions:
 jobs:
 
   # ============================================================
-  # BUILD PYTHON WHEELS
-  #
-  # C++ tests are intentionally NOT part of this release path.
-  # The wheel build itself compiles the native C++ extension.
+  # DESKTOP WHEELS
   # ============================================================
 
-  build-wheels:
-    name: Wheel - ${{ matrix.name }}
+  build-desktop-wheels:
+
+    name: Desktop Wheel - ${{ matrix.name }}
 
     runs-on: ${{ matrix.os }}
 
@@ -47,7 +45,7 @@ jobs:
 
     steps:
 
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Python 3.13
@@ -58,7 +56,7 @@ jobs:
       - name: Install cibuildwheel
         run: |
           python -m pip install --upgrade pip
-          python -m pip install cibuildwheel
+          python -m pip install --upgrade cibuildwheel
 
       - name: Build wheel
         run: |
@@ -68,7 +66,7 @@ jobs:
         shell: bash
         run: |
           echo "============================================================"
-          echo "VENLACPU WHEEL"
+          echo "VENLACPU DESKTOP WHEEL"
           echo "============================================================"
 
           ls -lah wheelhouse/
@@ -80,14 +78,11 @@ jobs:
           echo "Wheel count: $COUNT"
 
           if [ "$COUNT" -ne 1 ]; then
-            echo "ERROR: Expected exactly 1 wheel."
+            echo "ERROR: Expected exactly one wheel."
             exit 1
           fi
 
-          echo
-          echo "WHEEL BUILD: OK"
-
-      - name: Upload wheel
+      - name: Upload desktop wheel
         uses: actions/upload-artifact@v4
         with:
           name: venlacpu-wheel-${{ matrix.name }}
@@ -96,17 +91,18 @@ jobs:
 
 
   # ============================================================
-  # BUILD SOURCE DISTRIBUTION
+  # ANDROID ARM64 WHEEL
   # ============================================================
 
-  build-source:
-    name: Source Distribution
+  build-android-wheel:
+
+    name: Android ARM64 - CPython 3.13
 
     runs-on: ubuntu-latest
 
     steps:
 
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Python 3.13
@@ -114,17 +110,112 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install build
+      - name: Install build tools
         run: |
           python -m pip install --upgrade pip
-          python -m pip install build
+          python -m pip install --upgrade cibuildwheel twine
+
+      - name: Build Android ARM64 wheel
+        env:
+          CIBW_PLATFORM: android
+          CIBW_BUILD: "cp313-android_arm64_v8a"
+          CIBW_ARCHS_ANDROID: "arm64_v8a"
+          CIBW_BUILD_VERBOSITY: "1"
+          ANDROID_API_LEVEL: "27"
+          CMAKE_ARGS: >-
+            -DVENLA_BUILD_TESTS=OFF
+            -DVENLA_BUILD_EXAMPLES=OFF
+            -DVENLA_BUILD_PYTHON_BINDINGS=ON
+        run: |
+          echo "============================================================"
+          echo "VENLACPU ANDROID ARM64"
+          echo "============================================================"
+
+          python --version
+          cibuildwheel --version
+
+          python -m cibuildwheel \
+            --platform android \
+            --archs arm64_v8a \
+            --output-dir wheelhouse
+
+      - name: Verify Android wheel
+        shell: bash
+        run: |
+          echo "============================================================"
+          echo "ANDROID WHEEL"
+          echo "============================================================"
+
+          ls -lah wheelhouse/
+
+          COUNT=$(find wheelhouse -maxdepth 1 -name "*.whl" | wc -l)
+
+          echo "Wheel count: $COUNT"
+
+          if [ "$COUNT" -ne 1 ]; then
+            echo "ERROR: Expected exactly one Android wheel."
+            exit 1
+          fi
+
+          WHEEL=$(find wheelhouse -maxdepth 1 -name "*.whl" -type f | head -1)
+
+          echo
+          echo "Wheel:"
+          basename "$WHEEL"
+
+          case "$(basename "$WHEEL")" in
+            *android_*_arm64_v8a.whl)
+              echo "OK: Android ARM64 tag detected."
+              ;;
+            *)
+              echo "ERROR: Android ARM64 tag not detected."
+              exit 1
+              ;;
+          esac
+
+      - name: Verify Android wheel metadata
+        run: |
+          python -m twine check wheelhouse/*
+
+      - name: Upload Android wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: venlacpu-wheel-android-arm64
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
+
+  # ============================================================
+  # SOURCE DISTRIBUTION
+  # ============================================================
+
+  build-source:
+
+    name: Source Distribution
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade build
 
       - name: Build source distribution
         run: |
+          mkdir -p dist
           python -m build --sdist --outdir dist
 
-      - name: Verify source distribution
-        shell: bash
+      - name: Show source distribution
         run: |
           echo "============================================================"
           echo "VENLACPU SOURCE DISTRIBUTION"
@@ -134,16 +225,10 @@ jobs:
 
           COUNT=$(find dist -maxdepth 1 -name "*.tar.gz" | wc -l)
 
-          echo
-          echo "Source distribution count: $COUNT"
-
           if [ "$COUNT" -ne 1 ]; then
-            echo "ERROR: Expected exactly 1 source distribution."
+            echo "ERROR: Expected exactly one source distribution."
             exit 1
           fi
-
-          echo
-          echo "SOURCE BUILD: OK"
 
       - name: Upload source distribution
         uses: actions/upload-artifact@v4
@@ -158,17 +243,19 @@ jobs:
   # ============================================================
 
   collect:
+
     name: Collect Release Distributions
 
     needs:
-      - build-wheels
+      - build-desktop-wheels
+      - build-android-wheel
       - build-source
 
     runs-on: ubuntu-latest
 
     steps:
 
-      - name: Download wheels
+      - name: Download all wheels
         uses: actions/download-artifact@v4
         with:
           pattern: venlacpu-wheel-*
@@ -181,63 +268,53 @@ jobs:
           name: venlacpu-source
           path: dist
 
-      - name: Verify final distributions
+      - name: Show final distributions
         shell: bash
         run: |
           echo "============================================================"
           echo "VENLACPU RELEASE DISTRIBUTIONS"
           echo "============================================================"
 
-          echo
-          echo "FILES:"
           find dist -maxdepth 1 -type f -printf "%f\n" | sort
 
           echo
-          echo "============================================================"
-          echo "WHEEL COUNT"
-          echo "============================================================"
+          echo "TOTAL FILES:"
+          find dist -maxdepth 1 -type f | wc -l
 
-          WHEELS=$(find dist -maxdepth 1 -name "*.whl" | wc -l)
+          echo
+          echo "WHEELS:"
+          find dist -maxdepth 1 -name "*.whl" -printf "  %f\n" | sort
 
-          echo "Wheels: $WHEELS"
+          echo
+          echo "SOURCE:"
+          find dist -maxdepth 1 -name "*.tar.gz" -printf "  %f\n" | sort
 
-          if [ "$WHEELS" -ne 4 ]; then
-            echo "ERROR: Expected exactly 4 wheels."
+          WHEEL_COUNT=$(find dist -maxdepth 1 -name "*.whl" | wc -l)
+
+          if [ "$WHEEL_COUNT" -ne 5 ]; then
+            echo
+            echo "ERROR: Expected 5 wheels."
+            echo "Expected:"
+            echo "  Linux x86_64"
+            echo "  Windows x86_64"
+            echo "  macOS ARM64"
+            echo "  macOS x86_64"
+            echo "  Android ARM64"
+            exit 1
+          fi
+
+          SOURCE_COUNT=$(find dist -maxdepth 1 -name "*.tar.gz" | wc -l)
+
+          if [ "$SOURCE_COUNT" -ne 1 ]; then
+            echo
+            echo "ERROR: Expected exactly one source distribution."
             exit 1
           fi
 
           echo
-          echo "============================================================"
-          echo "SOURCE COUNT"
-          echo "============================================================"
+          echo "ALL RELEASE DISTRIBUTIONS: OK"
 
-          SDISTS=$(find dist -maxdepth 1 -name "*.tar.gz" | wc -l)
-
-          echo "Source distributions: $SDISTS"
-
-          if [ "$SDISTS" -ne 1 ]; then
-            echo "ERROR: Expected exactly 1 source distribution."
-            exit 1
-          fi
-
-          echo
-          echo "============================================================"
-          echo "FINAL DISTRIBUTION CHECK"
-          echo "============================================================"
-
-          TOTAL=$(find dist -maxdepth 1 -type f | wc -l)
-
-          echo "Total distributions: $TOTAL"
-
-          if [ "$TOTAL" -ne 5 ]; then
-            echo "ERROR: Expected exactly 5 distributions."
-            exit 1
-          fi
-
-          echo
-          echo "VENLACPU DISTRIBUTION BUILD: PASSED"
-
-      - name: Upload final release
+      - name: Upload complete release
         uses: actions/upload-artifact@v4
         with:
           name: venlacpu-release
@@ -246,14 +323,15 @@ jobs:
 
 
   # ============================================================
-  # PUBLISH TO PYPI
+  # PUBLISH EVERYTHING TO PYPI
   #
-  # This job only depends on the distribution collector.
-  # C++ tests cannot block this job because they are not
-  # dependencies of the release workflow.
+  # ONE PUBLISH JOB.
+  # Desktop + Android + source distribution are published
+  # together after every build has succeeded.
   # ============================================================
 
   publish:
+
     name: Publish VENLACPU to PyPI
 
     needs:
@@ -261,41 +339,29 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    if: startsWith(github.ref, 'refs/tags/v')
-
-    permissions:
-      id-token: write
-
     environment:
       name: pypi
       url: https://pypi.org/p/venlacpu
 
+    permissions:
+      contents: read
+
     steps:
 
-      - name: Download release distributions
+      - name: Download complete release
         uses: actions/download-artifact@v4
         with:
           name: venlacpu-release
           path: dist
 
-      - name: Show release information
+      - name: Show distributions
         shell: bash
         run: |
           echo "============================================================"
           echo "VENLACPU PYPI RELEASE"
           echo "============================================================"
 
-          echo
-          echo "Release tag:"
-          echo "$GITHUB_REF_NAME"
-
-          echo
-          echo "Distributions:"
           find dist -maxdepth 1 -type f -printf "%f\n" | sort
-
-          echo
-          echo "Distribution count:"
-          find dist -maxdepth 1 -type f | wc -l
 
       - name: Publish VENLACPU to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
