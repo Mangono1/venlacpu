@@ -12,14 +12,24 @@ permissions:
 
 jobs:
 
-  build:
-    name: Build ${{ matrix.name }}
+  # ============================================================
+  # BUILD PYTHON WHEELS
+  #
+  # C++ tests are intentionally NOT part of this release path.
+  # The wheel build itself compiles the native C++ extension.
+  # ============================================================
+
+  build-wheels:
+    name: Wheel - ${{ matrix.name }}
+
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
 
       matrix:
         include:
+
           - os: ubuntu-latest
             name: linux-x86_64
 
@@ -31,8 +41,6 @@ jobs:
 
           - os: macos-15-intel
             name: macos-x86_64
-
-    runs-on: ${{ matrix.os }}
 
     env:
       CIBW_BUILD: "cp313-*"
@@ -47,12 +55,12 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install build tools
+      - name: Install cibuildwheel
         run: |
           python -m pip install --upgrade pip
           python -m pip install cibuildwheel
 
-      - name: Build VENLACPU wheel
+      - name: Build wheel
         run: |
           python -m cibuildwheel --output-dir wheelhouse
 
@@ -68,26 +76,31 @@ jobs:
           COUNT=$(find wheelhouse -maxdepth 1 -name "*.whl" | wc -l)
 
           echo
+          echo "Platform: ${{ matrix.name }}"
           echo "Wheel count: $COUNT"
 
-          if [ "$COUNT" -eq 0 ]; then
-            echo "ERROR: Tidak ada wheel yang berhasil dibuat."
+          if [ "$COUNT" -ne 1 ]; then
+            echo "ERROR: Expected exactly 1 wheel."
             exit 1
           fi
 
           echo
           echo "WHEEL BUILD: OK"
 
-      - name: Upload wheel artifact
+      - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: venlacpu-${{ matrix.name }}
+          name: venlacpu-wheel-${{ matrix.name }}
           path: wheelhouse/*.whl
           if-no-files-found: error
 
 
-  source:
-    name: Build Source Distribution
+  # ============================================================
+  # BUILD SOURCE DISTRIBUTION
+  # ============================================================
+
+  build-source:
+    name: Source Distribution
 
     runs-on: ubuntu-latest
 
@@ -101,7 +114,7 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install build tools
+      - name: Install build
         run: |
           python -m pip install --upgrade pip
           python -m pip install build
@@ -124,15 +137,15 @@ jobs:
           echo
           echo "Source distribution count: $COUNT"
 
-          if [ "$COUNT" -eq 0 ]; then
-            echo "ERROR: Source distribution tidak berhasil dibuat."
+          if [ "$COUNT" -ne 1 ]; then
+            echo "ERROR: Expected exactly 1 source distribution."
             exit 1
           fi
 
           echo
           echo "SOURCE BUILD: OK"
 
-      - name: Upload source artifact
+      - name: Upload source distribution
         uses: actions/upload-artifact@v4
         with:
           name: venlacpu-source
@@ -140,44 +153,56 @@ jobs:
           if-no-files-found: error
 
 
+  # ============================================================
+  # COLLECT EVERYTHING
+  # ============================================================
+
   collect:
-    name: Collect VENLACPU Distributions
+    name: Collect Release Distributions
 
     needs:
-      - build
-      - source
+      - build-wheels
+      - build-source
 
     runs-on: ubuntu-latest
 
     steps:
 
-      - name: Download all distributions
+      - name: Download wheels
         uses: actions/download-artifact@v4
         with:
+          pattern: venlacpu-wheel-*
           path: dist
-          pattern: venlacpu-*
           merge-multiple: true
 
-      - name: Show distributions
+      - name: Download source distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: venlacpu-source
+          path: dist
+
+      - name: Verify final distributions
         shell: bash
         run: |
           echo "============================================================"
-          echo "VENLACPU DISTRIBUTIONS"
+          echo "VENLACPU RELEASE DISTRIBUTIONS"
           echo "============================================================"
 
-          find dist -type f -print
+          echo
+          echo "FILES:"
+          find dist -maxdepth 1 -type f -printf "%f\n" | sort
 
           echo
           echo "============================================================"
           echo "WHEEL COUNT"
           echo "============================================================"
 
-          WHEELS=$(find dist -type f -name "*.whl" | wc -l)
+          WHEELS=$(find dist -maxdepth 1 -name "*.whl" | wc -l)
 
           echo "Wheels: $WHEELS"
 
-          if [ "$WHEELS" -lt 4 ]; then
-            echo "ERROR: Kurang dari 4 wheel."
+          if [ "$WHEELS" -ne 4 ]; then
+            echo "ERROR: Expected exactly 4 wheels."
             exit 1
           fi
 
@@ -186,25 +211,47 @@ jobs:
           echo "SOURCE COUNT"
           echo "============================================================"
 
-          SDISTS=$(find dist -type f -name "*.tar.gz" | wc -l)
+          SDISTS=$(find dist -maxdepth 1 -name "*.tar.gz" | wc -l)
 
           echo "Source distributions: $SDISTS"
 
-          if [ "$SDISTS" -lt 1 ]; then
-            echo "ERROR: Source distribution tidak ditemukan."
+          if [ "$SDISTS" -ne 1 ]; then
+            echo "ERROR: Expected exactly 1 source distribution."
             exit 1
           fi
 
           echo
-          echo "VENLACPU DISTRIBUTION BUILD: OK"
+          echo "============================================================"
+          echo "FINAL DISTRIBUTION CHECK"
+          echo "============================================================"
 
-      - name: Upload final distributions
+          TOTAL=$(find dist -maxdepth 1 -type f | wc -l)
+
+          echo "Total distributions: $TOTAL"
+
+          if [ "$TOTAL" -ne 5 ]; then
+            echo "ERROR: Expected exactly 5 distributions."
+            exit 1
+          fi
+
+          echo
+          echo "VENLACPU DISTRIBUTION BUILD: PASSED"
+
+      - name: Upload final release
         uses: actions/upload-artifact@v4
         with:
           name: venlacpu-release
           path: dist/*
           if-no-files-found: error
 
+
+  # ============================================================
+  # PUBLISH TO PYPI
+  #
+  # This job only depends on the distribution collector.
+  # C++ tests cannot block this job because they are not
+  # dependencies of the release workflow.
+  # ============================================================
 
   publish:
     name: Publish VENLACPU to PyPI
@@ -231,19 +278,24 @@ jobs:
           name: venlacpu-release
           path: dist
 
-      - name: Verify distributions
+      - name: Show release information
         shell: bash
         run: |
           echo "============================================================"
-          echo "VENLACPU RELEASE"
+          echo "VENLACPU PYPI RELEASE"
           echo "============================================================"
 
+          echo
           echo "Release tag:"
           echo "$GITHUB_REF_NAME"
 
           echo
           echo "Distributions:"
           find dist -maxdepth 1 -type f -printf "%f\n" | sort
+
+          echo
+          echo "Distribution count:"
+          find dist -maxdepth 1 -type f | wc -l
 
       - name: Publish VENLACPU to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
