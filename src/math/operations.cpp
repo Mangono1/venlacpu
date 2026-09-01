@@ -1197,15 +1197,40 @@ Tensor matmul(
 
         // ----------------------------------------------------
         // Matrix multiplication
+        //
+        // CPU OPTIMIZATION: I-K-J LOOP ORDER
+        //
+        // Previous order:
+        //
+        //     row -> column -> k
+        //
+        // Optimized order:
+        //
+        //     row -> k -> column
+        //
+        // For contiguous row-major matrices this gives:
+        //
+        //     A[row, k]       : reused across all columns
+        //     B[k, column]    : contiguous over column
+        //     C[row, column]  : contiguous over column
+        //
+        // This layout is also a better foundation for future
+        // OpenMP parallelization and ARM NEON vectorization.
         // ----------------------------------------------------
 
         for (std::size_t row = 0;
              row < a_rows;
              ++row) {
 
-            for (std::size_t column = 0;
-                 column < b_cols;
-                 ++column) {
+            // ------------------------------------------------
+            // 2D/ND output row base
+            //
+            // For vector outputs (2D x 1D), the output is
+            // handled separately below because there is no
+            // column dimension in the result.
+            // ------------------------------------------------
+
+            if (b_rank == 1) {
 
                 float value = 0.0f;
 
@@ -1213,31 +1238,17 @@ Tensor matmul(
                      k < a_cols;
                      ++k) {
 
-                    std::size_t
+                    const std::size_t
                         a_index =
-                            a_batch_offset;
+                            a_rank == 1
+                                ? a_batch_offset + k
+                                : a_batch_offset +
+                                  row * a_cols +
+                                  k;
 
-                    std::size_t
+                    const std::size_t
                         b_index =
-                            b_batch_offset;
-
-                    if (a_rank == 1) {
-                        a_index += k;
-                    }
-                    else {
-                        a_index +=
-                            row * a_cols +
-                            k;
-                    }
-
-                    if (b_rank == 1) {
-                        b_index += k;
-                    }
-                    else {
-                        b_index +=
-                            k * b_cols +
-                            column;
-                    }
+                            b_batch_offset + k;
 
                     value +=
                         a_data[a_index] *
@@ -1245,7 +1256,10 @@ Tensor matmul(
                 }
 
                 // ------------------------------------------------
-                // Output index
+                // The generic output layout may contain
+                // broadcasted/multidimensional batch
+                // dimensions, so calculate the final index
+                // using the existing shape machinery.
                 // ------------------------------------------------
 
                 std::vector<std::size_t>
@@ -1258,12 +1272,6 @@ Tensor matmul(
                     );
                 }
 
-                if (b_rank != 1) {
-                    output_coordinates.push_back(
-                        column
-                    );
-                }
-
                 const std::size_t
                     output_index =
                         ravel_index(
@@ -1273,6 +1281,97 @@ Tensor matmul(
 
                 output[output_index] =
                     value;
+
+                continue;
+            }
+
+            // ------------------------------------------------
+            // Matrix output.
+            //
+            // I-K-J:
+            //
+            //     row
+            //       k
+            //         column
+            //
+            // Instead of repeatedly loading/storing C for
+            // every k, accumulate directly into the output
+            // row. The output row is contiguous.
+            // ------------------------------------------------
+
+            std::vector<std::size_t>
+                row_output_coordinates =
+                    batch_coordinates;
+
+            if (a_rank != 1) {
+                row_output_coordinates.push_back(
+                    row
+                );
+            }
+
+            row_output_coordinates.push_back(
+                0
+            );
+
+            const std::size_t
+                output_row_offset =
+                    ravel_index(
+                        row_output_coordinates,
+                        result.shape()
+                    );
+
+            float* output_row =
+                output +
+                output_row_offset;
+
+            // ------------------------------------------------
+            // Initialize output row.
+            // ------------------------------------------------
+
+            for (std::size_t column = 0;
+                 column < b_cols;
+                 ++column) {
+
+                output_row[column] =
+                    0.0f;
+            }
+
+            // ------------------------------------------------
+            // I-K-J kernel.
+            // ------------------------------------------------
+
+            for (std::size_t k = 0;
+                 k < a_cols;
+                 ++k) {
+
+                const std::size_t
+                    a_index =
+                        a_rank == 1
+                            ? a_batch_offset + k
+                            : a_batch_offset +
+                              row * a_cols +
+                              k;
+
+                const float
+                    a_value =
+                        a_data[a_index];
+
+                const std::size_t
+                    b_row_offset =
+                        b_batch_offset +
+                        k * b_cols;
+
+                for (std::size_t column = 0;
+                     column < b_cols;
+                     ++column) {
+
+                    output_row[column] +=
+                        a_value *
+                        b_data[
+                            b_row_offset +
+                            column
+                        ];
+                }
             }
         }
     }
