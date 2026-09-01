@@ -7,4 +7,4 @@
     print(ids)
     print(tok.decode(ids))
 
-VENLACPU 2.0.0 guarantees prefix stability for causal generation.
+VENLACPU 2.1.0 guarantees prefix stability for causal generation.

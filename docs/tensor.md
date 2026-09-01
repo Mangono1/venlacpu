@@ -27,7 +27,7 @@ decoded = tok.decode(ids)
 print(ids)
 print(decoded)
 Prefix Stability
-VENLACPU 2.0.0 introduces prefix-stable tokenization behavior required by causal generation.
+VENLACPU 2.1.0 introduces prefix-stable tokenization behavior required by causal generation.
 For example:
 encode("Bima")
 must remain a prefix of:

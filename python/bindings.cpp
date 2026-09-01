@@ -4,6 +4,9 @@
 #include "venla/core/device.hpp"
 #include "venla/core/dtype.hpp"
 #include "venla/core/shape.hpp"
+#include "venla/tensor/manipulation.hpp"
+#include "venla/math/operations.hpp"
+#include "venla/core/stride.hpp"
 #include "venla/nn/cross_entropy_loss.hpp"
 #include "venla/nn/language_model.hpp"
 #include "venla/optim/optimizer.hpp"
@@ -537,7 +540,7 @@ PYBIND11_MODULE(_venlacpu, m) {
     // VERSION
     // ========================================================
 
-    m.attr("__version__") = "1.1.0";
+    m.attr("__version__") = "2.1.0";
 
     // ========================================================
     // DEVICE
@@ -686,6 +689,49 @@ PYBIND11_MODULE(_venlacpu, m) {
         .def(
             "__repr__",
             &venla::Shape::to_string
+        );
+
+    // ========================================================
+    // STRIDE
+    // ========================================================
+
+    py::class_<venla::Stride>(
+        m,
+        "Stride"
+    )
+        .def(
+            py::init<>()
+        )
+        .def(
+            py::init<const venla::Shape&>()
+        )
+        .def(
+            py::init<const std::vector<std::size_t>&>()
+        )
+        .def(
+            "values",
+            &venla::Stride::values,
+            py::return_value_policy::reference_internal
+        )
+        .def(
+            "ndim",
+            &venla::Stride::ndim
+        )
+        .def(
+            "__getitem__",
+            &venla::Stride::operator[]
+        )
+        .def(
+            "is_contiguous",
+            &venla::Stride::is_contiguous
+        )
+        .def(
+            "__str__",
+            &venla::Stride::to_string
+        )
+        .def(
+            "__repr__",
+            &venla::Stride::to_string
         );
 
     // ========================================================
@@ -848,6 +894,51 @@ PYBIND11_MODULE(_venlacpu, m) {
             &venla::Tensor::info
         )
 
+.def(
+            "__add__",
+            [](const venla::Tensor& a,
+               const venla::Tensor& b) {
+                return venla::add(a, b);
+            }
+        )
+        .def(
+            "__sub__",
+            [](const venla::Tensor& a,
+               const venla::Tensor& b) {
+                return venla::sub(a, b);
+            }
+        )
+        .def(
+            "__mul__",
+            [](const venla::Tensor& a,
+               const venla::Tensor& b) {
+                return venla::mul(a, b);
+            }
+        )
+        .def(
+            "__truediv__",
+            [](const venla::Tensor& a,
+               const venla::Tensor& b) {
+                return venla::div(a, b);
+            }
+        )
+        .def(
+            "__neg__",
+            [](const venla::Tensor& input) {
+                return venla::neg(input);
+            }
+        )
+        .def(
+            "__matmul__",
+            [](const venla::Tensor& a,
+               const venla::Tensor& b) {
+                return venla::matmul(a, b);
+            }
+        )
+
+        // ====================================================
+        // PYTHON DATA ACCESS
+
         // ====================================================
         // PYTHON DATA ACCESS
         // ====================================================
@@ -982,6 +1073,222 @@ PYBIND11_MODULE(_venlacpu, m) {
                 );
             }
         );
+
+    // ========================================================
+    // TENSOR MATH API
+    // ========================================================
+
+    m.def(
+        "add",
+        &venla::add,
+        py::arg("a"),
+        py::arg("b")
+    );
+
+    m.def(
+        "sub",
+        &venla::sub,
+        py::arg("a"),
+        py::arg("b")
+    );
+
+    m.def(
+        "mul",
+        &venla::mul,
+        py::arg("a"),
+        py::arg("b")
+    );
+
+    m.def(
+        "div",
+        &venla::div,
+        py::arg("a"),
+        py::arg("b")
+    );
+
+    m.def(
+        "neg",
+        &venla::neg,
+        py::arg("input")
+    );
+
+    m.def(
+        "sum",
+        &venla::sum,
+        py::arg("input")
+    );
+
+    m.def(
+        "mean",
+        &venla::mean,
+        py::arg("input")
+    );
+
+    m.def(
+        "max",
+        &venla::max,
+        py::arg("input")
+    );
+
+    m.def(
+        "min",
+        &venla::min,
+        py::arg("input")
+    );
+
+    m.def(
+        "dot",
+        &venla::dot,
+        py::arg("a"),
+        py::arg("b")
+    );
+
+    m.def(
+        "matmul",
+        &venla::matmul,
+        py::arg("a"),
+        py::arg("b")
+    );
+
+    m.def(
+        "transpose",
+        py::overload_cast<const venla::Tensor&>(
+            &venla::transpose
+        ),
+        py::arg("input")
+    );
+
+    m.def(
+        "transpose",
+        py::overload_cast<
+            const venla::Tensor&,
+            std::size_t,
+            std::size_t
+        >(
+            &venla::transpose
+        ),
+        py::arg("input"),
+        py::arg("dim0"),
+        py::arg("dim1")
+    );
+
+    // ========================================================
+    // TENSOR MANIPULATION API
+    // ========================================================
+
+    m.def(
+        "reshape",
+        py::overload_cast<
+            const venla::Tensor&,
+            const venla::Shape&
+        >(
+            &venla::reshape
+        ),
+        py::arg("input"),
+        py::arg("shape")
+    );
+
+    m.def(
+        "flatten",
+        py::overload_cast<
+            const venla::Tensor&
+        >(
+            &venla::flatten
+        ),
+        py::arg("input")
+    );
+
+    m.def(
+        "flatten",
+        py::overload_cast<
+            const venla::Tensor&,
+            std::size_t,
+            std::size_t
+        >(
+            &venla::flatten
+        ),
+        py::arg("input"),
+        py::arg("start_dim"),
+        py::arg("end_dim")
+    );
+
+    m.def(
+        "squeeze",
+        py::overload_cast<
+            const venla::Tensor&
+        >(
+            &venla::squeeze
+        ),
+        py::arg("input")
+    );
+
+    m.def(
+        "squeeze",
+        py::overload_cast<
+            const venla::Tensor&,
+            std::size_t
+        >(
+            &venla::squeeze
+        ),
+        py::arg("input"),
+        py::arg("dim")
+    );
+
+    m.def(
+        "unsqueeze",
+        &venla::unsqueeze,
+        py::arg("input"),
+        py::arg("dim")
+    );
+
+    m.def(
+        "concatenate",
+        &venla::concatenate,
+        py::arg("tensors"),
+        py::arg("dim")
+    );
+
+    m.def(
+        "stack",
+        &venla::stack,
+        py::arg("tensors"),
+        py::arg("dim")
+    );
+
+    m.def(
+        "index",
+        py::overload_cast<
+            const venla::Tensor&,
+            const std::vector<std::size_t>&
+        >(
+            &venla::index
+        ),
+        py::arg("input"),
+        py::arg("indices")
+    );
+
+    m.def(
+        "index",
+        py::overload_cast<
+            const venla::Tensor&,
+            std::size_t
+        >(
+            &venla::index
+        ),
+        py::arg("input"),
+        py::arg("position")
+    );
+
+    m.def(
+        "slice",
+        &venla::slice,
+        py::arg("input"),
+        py::arg("dim"),
+        py::arg("start"),
+        py::arg("stop"),
+        py::arg("step") = 1
+    );
+
 
     // ========================================================
     // SIMPLE TENSOR HELPERS

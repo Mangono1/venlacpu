@@ -254,7 +254,7 @@ jobs:
   #        ↓
   # tidak menemukan wheel Android
   #        ↓
-  # mengambil venlacpu-0.2.3.tar.gz
+  # mengambil venlacpu-2.1.0.tar.gz
   #        ↓
   # membaca pyproject.toml
   #        ↓

@@ -1,4 +1,4 @@
-# VENLACPU 2.0.0 Documentation
+# VENLACPU 2.1.0 Documentation
 
 VENLACPU is a CPU-first deep learning framework powered by a native C++17 core.
 
@@ -24,4 +24,4 @@ VENLACPU is a CPU-first deep learning framework powered by a native C++17 core.
 - Train a Language Model
 - Generate Text
 
-Current documentation version: **2.0.0**
+Current documentation version: **2.1.0**

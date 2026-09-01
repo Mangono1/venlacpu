@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(VENLACPU
-    VERSION 1.1.0
+    VERSION 2.1.0
     LANGUAGES CXX
 )
 
