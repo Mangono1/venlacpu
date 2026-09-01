@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cctype>
 #include <fstream>
 #include <limits>
 #include <stdexcept>
@@ -21,6 +22,50 @@ std::size_t hash_string(
     return std::hash<std::string>{}(
         value
     );
+}
+
+
+// ============================================================
+// CAUSAL PREFIX STABILITY
+// ============================================================
+//
+// A merge that ends in whitespace is unsafe for autoregressive
+// tokenization.
+//
+// Example:
+//
+//     "Bima"
+//         -> ... "a"
+//
+//     "Bima "
+//         -> ... "a "
+//
+// If "a" + " " is allowed to become "a ", the tokenization of
+// an already existing prefix changes when a new character arrives.
+//
+// VENLACPU causal generation requires prefix-stable tokenization.
+//
+// Leading-space merges remain valid:
+//
+//     " " + "s" -> " s"
+//     " " + "B" -> " B"
+//
+// Trailing-space merges are forbidden.
+//
+
+bool ends_with_ascii_whitespace(
+    const std::string& value
+) {
+    if (value.empty()) {
+        return false;
+    }
+
+    const unsigned char c =
+        static_cast<unsigned char>(
+            value.back()
+        );
+
+    return std::isspace(c) != 0;
 }
 
 } // namespace
@@ -448,6 +493,17 @@ void BPETokenizer::train(
                 continue;
             }
 
+            // Do not learn merges whose right side ends in
+            // whitespace. Such merges make prefix tokenization
+            // depend on future input.
+            if (
+                ends_with_ascii_whitespace(
+                    pair.right
+                )
+            ) {
+                continue;
+            }
+
             if (!found) {
 
                 found = true;
@@ -572,6 +628,17 @@ BPETokenizer::apply_merges(
 
         if (sequence.size() < 2) {
             break;
+        }
+
+        // Backward compatibility safety:
+        // old VENLACPU tokenizer files may contain a trailing
+        // whitespace merge. Never apply it during inference.
+        if (
+            ends_with_ascii_whitespace(
+                merge.right
+            )
+        ) {
+            continue;
         }
 
         SymbolSequence result;
