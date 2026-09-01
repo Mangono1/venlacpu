@@ -7,10 +7,17 @@ C++17 core.
 from .version import __version__, version
 
 try:
+    from . import _venlacpu as _native
     from ._venlacpu import *
     _native_available = True
 except ImportError:
+    _native = None
     _native_available = False
+
+
+def native_available():
+    """Return True when the native VENLACPU extension is available."""
+    return _native_available
 
 
 def generate_text(
@@ -65,6 +72,7 @@ __all__ = [
     "version",
     "__version__",
     "generate_text",
+    "native_available",
 ]
 
 if _native_available:

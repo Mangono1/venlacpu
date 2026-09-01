@@ -531,6 +531,158 @@ void load_model_weights(
 } // namespace
 
 
+
+// ============================================================
+// VENLACPU 2.2.0 PYTHON TENSOR HELPERS
+// ============================================================
+
+namespace {
+
+venla::Tensor scalar_tensor(
+    float value,
+    const venla::Device& device
+) {
+    venla::Tensor result =
+        venla::Tensor::zeros(
+            venla::Shape{},
+            venla::DType::Float32,
+            device
+        );
+
+    result.data_as<float>()[0] = value;
+
+    return result;
+}
+
+bool py_is_number(
+    const py::handle& value
+) {
+    return (
+        py::isinstance<py::int_>(value) ||
+        py::isinstance<py::float_>(value)
+    );
+}
+
+float py_to_float(
+    const py::handle& value
+) {
+    return py::cast<float>(value);
+}
+
+venla::Tensor tensor_add_scalar(
+    const venla::Tensor& tensor,
+    float value
+) {
+    return venla::add(
+        tensor,
+        scalar_tensor(value, tensor.device())
+    );
+}
+
+venla::Tensor scalar_add_tensor(
+    float value,
+    const venla::Tensor& tensor
+) {
+    return venla::add(
+        scalar_tensor(value, tensor.device()),
+        tensor
+    );
+}
+
+venla::Tensor tensor_sub_scalar(
+    const venla::Tensor& tensor,
+    float value
+) {
+    return venla::sub(
+        tensor,
+        scalar_tensor(value, tensor.device())
+    );
+}
+
+venla::Tensor scalar_sub_tensor(
+    float value,
+    const venla::Tensor& tensor
+) {
+    return venla::sub(
+        scalar_tensor(value, tensor.device()),
+        tensor
+    );
+}
+
+venla::Tensor tensor_mul_scalar(
+    const venla::Tensor& tensor,
+    float value
+) {
+    return venla::mul(
+        tensor,
+        scalar_tensor(value, tensor.device())
+    );
+}
+
+venla::Tensor scalar_mul_tensor(
+    float value,
+    const venla::Tensor& tensor
+) {
+    return venla::mul(
+        scalar_tensor(value, tensor.device()),
+        tensor
+    );
+}
+
+venla::Tensor tensor_div_scalar(
+    const venla::Tensor& tensor,
+    float value
+) {
+    return venla::div(
+        tensor,
+        scalar_tensor(value, tensor.device())
+    );
+}
+
+venla::Tensor scalar_div_tensor(
+    float value,
+    const venla::Tensor& tensor
+) {
+    return venla::div(
+        scalar_tensor(value, tensor.device()),
+        tensor
+    );
+}
+
+py::object tensor_item(
+    const venla::Tensor& tensor
+) {
+    if (tensor.numel() != 1) {
+        throw py::value_error(
+            "Tensor.item(): tensor harus memiliki tepat 1 elemen"
+        );
+    }
+
+    if (tensor.dtype() == venla::DType::Float32) {
+        return py::cast(
+            tensor.data_as<float>()[0]
+        );
+    }
+
+    if (tensor.dtype() == venla::DType::Int32) {
+        return py::cast(
+            tensor.data_as<std::int32_t>()[0]
+        );
+    }
+
+    if (tensor.dtype() == venla::DType::Int64) {
+        return py::cast(
+            tensor.data_as<std::int64_t>()[0]
+        );
+    }
+
+    throw py::type_error(
+        "Tensor.item(): dtype belum didukung"
+    );
+}
+
+}
+
 PYBIND11_MODULE(_venlacpu, m) {
 
     m.doc() =
@@ -540,7 +692,7 @@ PYBIND11_MODULE(_venlacpu, m) {
     // VERSION
     // ========================================================
 
-    m.attr("__version__") = "2.1.0";
+    m.attr("__version__") = "2.2.0";
 
     // ========================================================
     // DEVICE
@@ -817,6 +969,14 @@ PYBIND11_MODULE(_venlacpu, m) {
             "has_grad",
             &venla::Tensor::has_grad
         )
+
+        .def(
+            "grad",
+            [](const venla::Tensor& tensor) -> venla::Tensor {
+                return tensor.grad();
+            },
+            "Return the tensor gradient."
+        )
         .def(
             "zero_grad",
             &venla::Tensor::zero_grad
@@ -826,6 +986,18 @@ PYBIND11_MODULE(_venlacpu, m) {
             py::overload_cast<>(
                 &venla::Tensor::backward
             )
+        )
+
+        // ====================================================
+        // VENLACPU 2.2.0 — Tensor reduction helpers
+        // ====================================================
+
+        .def(
+            "sum",
+            [](const venla::Tensor& tensor) -> venla::Tensor {
+                return venla::sum(tensor);
+            },
+            "Return the sum of all tensor elements."
         )
         .def(
             "backward",
@@ -885,6 +1057,86 @@ PYBIND11_MODULE(_venlacpu, m) {
             "info",
             &venla::Tensor::info
         )
+
+        // ====================================================
+        // SCALAR ACCESS
+        // ====================================================
+
+        .def(
+            "item",
+            [](const venla::Tensor& tensor) {
+                return tensor_item(tensor);
+            }
+        )
+
+        // ====================================================
+        // MANIPULATION METHODS
+        // ====================================================
+
+        .def(
+            "reshape",
+            [](const venla::Tensor& tensor,
+               const venla::Shape& shape) {
+                return venla::reshape(
+                    tensor,
+                    shape
+                );
+            },
+            py::arg("shape")
+        )
+
+        .def(
+            "flatten",
+            [](const venla::Tensor& tensor) {
+                return venla::flatten(tensor);
+            }
+        )
+
+        .def(
+            "flatten",
+            [](const venla::Tensor& tensor,
+               std::size_t start_dim,
+               std::size_t end_dim) {
+                return venla::flatten(
+                    tensor,
+                    start_dim,
+                    end_dim
+                );
+            },
+            py::arg("start_dim"),
+            py::arg("end_dim")
+        )
+
+        .def(
+            "squeeze",
+            [](const venla::Tensor& tensor) {
+                return venla::squeeze(tensor);
+            }
+        )
+
+        .def(
+            "squeeze",
+            [](const venla::Tensor& tensor,
+               std::size_t dim) {
+                return venla::squeeze(
+                    tensor,
+                    dim
+                );
+            },
+            py::arg("dim")
+        )
+
+        .def(
+            "unsqueeze",
+            [](const venla::Tensor& tensor,
+               std::size_t dim) {
+                return venla::unsqueeze(
+                    tensor,
+                    dim
+                );
+            },
+            py::arg("dim")
+        )
         .def(
             "__repr__",
             &venla::Tensor::info
@@ -928,6 +1180,163 @@ PYBIND11_MODULE(_venlacpu, m) {
                 return venla::neg(input);
             }
         )
+
+        // ====================================================
+        // SCALAR ARITHMETIC — VENLACPU 2.2.0
+        // ====================================================
+
+        .def(
+            "__add__",
+            [](const venla::Tensor& a,
+               const py::object& b) -> venla::Tensor {
+
+                if (py_is_number(b)) {
+                    return tensor_add_scalar(
+                        a,
+                        py_to_float(b)
+                    );
+                }
+
+                return venla::add(
+                    a,
+                    b.cast<const venla::Tensor&>()
+                );
+            }
+        )
+
+        .def(
+            "__radd__",
+            [](const venla::Tensor& a,
+               const py::object& b) -> venla::Tensor {
+
+                if (py_is_number(b)) {
+                    return scalar_add_tensor(
+                        py_to_float(b),
+                        a
+                    );
+                }
+
+                return venla::add(
+                    b.cast<const venla::Tensor&>(),
+                    a
+                );
+            }
+        )
+
+        .def(
+            "__sub__",
+            [](const venla::Tensor& a,
+               const py::object& b) -> venla::Tensor {
+
+                if (py_is_number(b)) {
+                    return tensor_sub_scalar(
+                        a,
+                        py_to_float(b)
+                    );
+                }
+
+                return venla::sub(
+                    a,
+                    b.cast<const venla::Tensor&>()
+                );
+            }
+        )
+
+        .def(
+            "__rsub__",
+            [](const venla::Tensor& a,
+               const py::object& b) -> venla::Tensor {
+
+                if (py_is_number(b)) {
+                    return scalar_sub_tensor(
+                        py_to_float(b),
+                        a
+                    );
+                }
+
+                return venla::sub(
+                    b.cast<const venla::Tensor&>(),
+                    a
+                );
+            }
+        )
+
+        .def(
+            "__mul__",
+            [](const venla::Tensor& a,
+               const py::object& b) -> venla::Tensor {
+
+                if (py_is_number(b)) {
+                    return tensor_mul_scalar(
+                        a,
+                        py_to_float(b)
+                    );
+                }
+
+                return venla::mul(
+                    a,
+                    b.cast<const venla::Tensor&>()
+                );
+            }
+        )
+
+        .def(
+            "__rmul__",
+            [](const venla::Tensor& a,
+               const py::object& b) -> venla::Tensor {
+
+                if (py_is_number(b)) {
+                    return scalar_mul_tensor(
+                        py_to_float(b),
+                        a
+                    );
+                }
+
+                return venla::mul(
+                    b.cast<const venla::Tensor&>(),
+                    a
+                );
+            }
+        )
+
+        .def(
+            "__truediv__",
+            [](const venla::Tensor& a,
+               const py::object& b) -> venla::Tensor {
+
+                if (py_is_number(b)) {
+                    return tensor_div_scalar(
+                        a,
+                        py_to_float(b)
+                    );
+                }
+
+                return venla::div(
+                    a,
+                    b.cast<const venla::Tensor&>()
+                );
+            }
+        )
+
+        .def(
+            "__rtruediv__",
+            [](const venla::Tensor& a,
+               const py::object& b) -> venla::Tensor {
+
+                if (py_is_number(b)) {
+                    return scalar_div_tensor(
+                        py_to_float(b),
+                        a
+                    );
+                }
+
+                return venla::div(
+                    b.cast<const venla::Tensor&>(),
+                    a
+                );
+            }
+        )
+
         .def(
             "__matmul__",
             [](const venla::Tensor& a,

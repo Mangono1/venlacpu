@@ -2,31 +2,28 @@ import venlacpu
 
 
 def test_package_version():
-    assert venlacpu.__version__ == "0.1.0"
+    assert venlacpu.__version__ == "2.2.0"
 
 
 def test_native_available():
-    assert venlacpu.native_available()
+    assert venlacpu.native_available() is True
+    assert hasattr(venlacpu, "_native")
 
 
 def test_tensor():
-    native = venlacpu._native
-
-    tensor = native.ones(
-        native.Shape([2, 3]),
-        native.DType.Float32,
-        native.Device.cpu(),
+    tensor = venlacpu.Tensor.ones(
+        venlacpu.Shape([2, 3]),
+        venlacpu.DType.Float32,
+        venlacpu.Device.cpu(),
     )
 
     assert tensor.shape().dimensions() == [2, 3]
     assert tensor.numel() == 6
-    assert tensor.dtype() == native.DType.Float32
+    assert tensor.dtype() == venlacpu.DType.Float32
 
 
 def test_causal_dataset():
-    native = venlacpu._native
-
-    dataset = native.CausalLMDataset()
+    dataset = venlacpu.CausalLMDataset()
 
     dataset.add_sequence(
         [1, 2, 3, 4]
@@ -50,9 +47,7 @@ def test_causal_dataset():
 
 
 def test_language_model():
-    native = venlacpu._native
-
-    model = native.LanguageModel(
+    model = venlacpu.LanguageModel(
         16,
         8,
         8,
@@ -70,9 +65,7 @@ def test_language_model():
 
 
 def test_optimizer():
-    native = venlacpu._native
-
-    model = native.LanguageModel(
+    model = venlacpu.LanguageModel(
         16,
         8,
         8,
@@ -81,13 +74,12 @@ def test_optimizer():
         1,
     )
 
-    optimizer = native.Adam(
+    optimizer = venlacpu.Adam(
         0.001
     )
 
-    native.add_model_parameters(
-        optimizer,
-        model,
+    optimizer.add_parameters(
+        model.parameters()
     )
 
     assert optimizer.parameter_count() > 0

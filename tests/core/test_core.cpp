@@ -8,8 +8,8 @@
 #include "venla/core/version.hpp"
 
 int main() {
-    assert(venla::VERSION_MAJOR == 0);
-    assert(venla::VERSION_MINOR == 1);
+    assert(venla::VERSION_MAJOR == 2);
+    assert(venla::VERSION_MINOR == 2);
     assert(venla::VERSION_PATCH == 0);
 
     assert(
