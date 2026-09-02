@@ -18,7 +18,7 @@ def make_dataset():
 
 def main():
     print("=" * 60)
-    print(" VENLACPU 2.3.0 — PYTHON CHECKPOINT API TEST")
+    print(" VENLACPU 2.3.1 — PYTHON CHECKPOINT API TEST")
     print("=" * 60)
 
     dataset = make_dataset()

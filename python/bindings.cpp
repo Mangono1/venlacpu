@@ -692,7 +692,7 @@ PYBIND11_MODULE(_venlacpu, m) {
     // VERSION
     // ========================================================
 
-    m.attr("__version__") = "2.3.0";
+    m.attr("__version__") = "2.3.1";
 
     // ========================================================
     // DEVICE
@@ -2169,6 +2169,30 @@ PYBIND11_MODULE(_venlacpu, m) {
         .def_readwrite(
             "ignore_index",
             &venla::TrainerConfig::ignore_index
+        )
+        .def_readwrite(
+            "max_grad_norm",
+            &venla::TrainerConfig::max_grad_norm
+        )
+        .def_readwrite(
+            "evaluate_each_epoch",
+            &venla::TrainerConfig::evaluate_each_epoch
+        )
+        .def_readwrite(
+            "early_stopping",
+            &venla::TrainerConfig::early_stopping
+        )
+        .def_readwrite(
+            "early_stopping_patience",
+            &venla::TrainerConfig::early_stopping_patience
+        )
+        .def_readwrite(
+            "early_stopping_min_delta",
+            &venla::TrainerConfig::early_stopping_min_delta
+        )
+        .def_readwrite(
+            "keep_best_model",
+            &venla::TrainerConfig::keep_best_model
         );
 
     // ========================================================
@@ -2185,6 +2209,26 @@ PYBIND11_MODULE(_venlacpu, m) {
         .def_readonly(
             "loss",
             &venla::TrainingMetrics::loss
+        )
+        .def_readonly(
+            "eval_loss",
+            &venla::TrainingMetrics::eval_loss
+        )
+        .def_readonly(
+            "perplexity",
+            &venla::TrainingMetrics::perplexity
+        )
+        .def_readonly(
+            "eval_perplexity",
+            &venla::TrainingMetrics::eval_perplexity
+        )
+        .def_readonly(
+            "loss_reduction",
+            &venla::TrainingMetrics::loss_reduction
+        )
+        .def_readonly(
+            "learning_rate",
+            &venla::TrainingMetrics::learning_rate
         )
         .def_readonly(
             "tokens",
@@ -2205,6 +2249,73 @@ PYBIND11_MODULE(_venlacpu, m) {
         .def_readonly(
             "global_step",
             &venla::TrainingMetrics::global_step
+        )
+        .def_readonly(
+            "epoch_seconds",
+            &venla::TrainingMetrics::epoch_seconds
+        )
+        .def_readonly(
+            "tokens_per_second",
+            &venla::TrainingMetrics::tokens_per_second
+        )
+        .def_readonly(
+            "batches_per_second",
+            &venla::TrainingMetrics::batches_per_second
+        )
+        .def_readonly(
+            "gradient_norm",
+            &venla::TrainingMetrics::gradient_norm
+        )
+        .def_readonly(
+            "clipped_gradient_norm",
+            &venla::TrainingMetrics::clipped_gradient_norm
+        )
+        .def_readonly(
+            "gradient_clipped",
+            &venla::TrainingMetrics::gradient_clipped
+        )
+        .def_readonly(
+            "gradient_finite",
+            &venla::TrainingMetrics::gradient_finite
+        )
+        .def_readonly(
+            "loss_finite",
+            &venla::TrainingMetrics::loss_finite
+        )
+        .def_readonly(
+            "is_best",
+            &venla::TrainingMetrics::is_best
+        )
+        .def_readonly(
+            "early_stopped",
+            &venla::TrainingMetrics::early_stopped
+        )
+        .def_readonly(
+            "bad_epochs",
+            &venla::TrainingMetrics::bad_epochs
+        );
+
+    // ========================================================
+    // TRAINING HISTORY
+    // ========================================================
+
+    py::class_<venla::TrainingHistory>(
+        m,
+        "TrainingHistory"
+    )
+        .def(py::init<>())
+        .def("clear", &venla::TrainingHistory::clear)
+        .def("add", &venla::TrainingHistory::add)
+        .def("size", &venla::TrainingHistory::size)
+        .def("empty", &venla::TrainingHistory::empty)
+        .def(
+            "at",
+            &venla::TrainingHistory::at,
+            py::return_value_policy::reference_internal
+        )
+        .def(
+            "records",
+            &venla::TrainingHistory::records
         );
 
     // ========================================================
@@ -2223,7 +2334,9 @@ PYBIND11_MODULE(_venlacpu, m) {
             >(),
             py::arg("model"),
             py::arg("optimizer"),
-            py::arg("config") = venla::TrainerConfig()
+            py::arg("config") = venla::TrainerConfig(),
+            py::keep_alive<1, 2>(),
+            py::keep_alive<1, 3>()
         )
         .def(
             "train_epoch",
@@ -2288,12 +2401,12 @@ PYBIND11_MODULE(_venlacpu, m) {
         .def(
             "model",
             &venla::Trainer::model,
-            py::return_value_policy::reference
+            py::return_value_policy::reference_internal
         )
         .def(
             "optimizer",
             &venla::Trainer::optimizer,
-            py::return_value_policy::reference
+            py::return_value_policy::reference_internal
         ).def(
             "config",
             &venla::Trainer::config,

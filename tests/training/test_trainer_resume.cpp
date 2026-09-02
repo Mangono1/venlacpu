@@ -284,7 +284,7 @@ int main() {
         << std::endl;
 
     std::cout
-        << " VENLACPU 2.3.0 — TRAINER RESUME TEST"
+        << " VENLACPU 2.3.1 — TRAINER RESUME TEST"
         << std::endl;
 
     std::cout

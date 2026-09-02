@@ -143,7 +143,7 @@ def check(
 def correctness():
     print()
     print("=" * 68)
-    print(" VENLACPU 2.3.0 — I-K-J MATMUL CORRECTNESS")
+    print(" VENLACPU 2.3.1 — I-K-J MATMUL CORRECTNESS")
     print("=" * 68)
 
     print()
@@ -151,7 +151,7 @@ def correctness():
     print("Native  :", venlacpu.native_available())
     print("CPU     :", os.cpu_count())
 
-    assert venlacpu.__version__ == "2.3.0"
+    assert venlacpu.__version__ == "2.3.1"
     assert venlacpu.native_available()
 
     print()
@@ -337,7 +337,7 @@ def main():
 
     print()
     print("Version:")
-    print("  2.3.0 release API")
+    print("  2.3.1 release API")
 
     print()
     print("Benchmark results:")
