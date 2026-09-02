@@ -50,7 +50,7 @@ def discover_tests(module):
 def main():
     print()
     print("=" * 60)
-    print(" VENLACPU 2.2.1 — PYTHON REGRESSION RUNNER")
+    print(" VENLACPU 2.3.0 — PYTHON REGRESSION RUNNER")
     print("=" * 60)
     print()
 

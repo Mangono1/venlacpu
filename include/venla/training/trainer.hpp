@@ -4,11 +4,18 @@
 #include "venla/nn/language_model.hpp"
 #include "venla/optim/optimizer.hpp"
 #include "venla/training/causal_lm.hpp"
+#include "venla/training/checkpoint.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace venla {
+
+// ============================================================
+// TRAINING CONFIG
+// ============================================================
 
 struct TrainerConfig {
 
@@ -23,12 +30,46 @@ struct TrainerConfig {
     std::size_t log_every = 1;
 
     std::int64_t ignore_index = -100;
+
+    // Gradient clipping.
+    // 0 = disabled.
+    float max_grad_norm = 0.0f;
+
+    // Validation.
+    bool evaluate_each_epoch = false;
+
+    // Early stopping.
+    bool early_stopping = false;
+
+    std::size_t early_stopping_patience = 3;
+
+    float early_stopping_min_delta = 0.0f;
+
+    // Save best model in memory.
+    bool keep_best_model = false;
 };
+
+// ============================================================
+// TRAINING METRICS
+// ============================================================
 
 struct TrainingMetrics {
 
+    // Core loss.
     float loss = 0.0f;
 
+    float eval_loss = 0.0f;
+
+    float perplexity = 0.0f;
+
+    float eval_perplexity = 0.0f;
+
+    float loss_reduction = 0.0f;
+
+    // Learning.
+    float learning_rate = 0.0f;
+
+    // Counters.
     std::size_t tokens = 0;
 
     std::size_t batches = 0;
@@ -38,9 +79,94 @@ struct TrainingMetrics {
     std::size_t epoch = 0;
 
     std::size_t global_step = 0;
+
+    // Performance.
+    double epoch_seconds = 0.0;
+
+    double tokens_per_second = 0.0;
+
+    double batches_per_second = 0.0;
+
+    // Gradient diagnostics.
+    float gradient_norm = 0.0f;
+
+    float clipped_gradient_norm = 0.0f;
+
+    bool gradient_clipped = false;
+
+    bool gradient_finite = true;
+
+    bool loss_finite = true;
+
+    // Training control.
+    bool is_best = false;
+
+    bool early_stopped = false;
+
+    std::size_t bad_epochs = 0;
 };
 
+// ============================================================
+// TRAINING HISTORY
+// ============================================================
+
+class TrainingHistory {
+
+public:
+
+    void clear();
+
+    void add(const TrainingMetrics& metrics);
+
+    std::size_t size() const;
+
+    bool empty() const;
+
+    const TrainingMetrics& at(
+        std::size_t index
+    ) const;
+
+    const std::vector<TrainingMetrics>& records() const;
+
+private:
+
+    std::vector<TrainingMetrics> records_;
+
+};
+
+// ============================================================
+// CALLBACK
+// ============================================================
+
+class TrainerCallback {
+
+public:
+
+    virtual ~TrainerCallback() = default;
+
+    virtual void on_train_begin() {}
+
+    virtual void on_epoch_begin(
+        std::size_t
+    ) {}
+
+    virtual void on_batch_end(
+        const TrainingMetrics&
+    ) {}
+
+    virtual void on_epoch_end(
+        const TrainingMetrics&
+    ) {}
+
+    virtual void on_train_end() {}
+};
+
+// ============================================================
+// TRAINER
+// ============================================================
+
 class Trainer {
+
 public:
 
     Trainer(
@@ -57,9 +183,62 @@ public:
         const CausalLMDataset& dataset
     );
 
+    TrainingMetrics fit(
+        const CausalLMDataset& dataset,
+        const CausalLMDataset& validation_dataset
+    );
+
     TrainingMetrics evaluate(
         const CausalLMDataset& dataset
     );
+
+    // --------------------------------------------------------
+    // CALLBACK
+    // --------------------------------------------------------
+
+    void add_callback(
+        TrainerCallback& callback
+    );
+
+    void clear_callbacks();
+
+    // --------------------------------------------------------
+    // HISTORY
+    // --------------------------------------------------------
+
+    const TrainingHistory& history() const;
+
+    // --------------------------------------------------------
+    // BEST MODEL
+    // --------------------------------------------------------
+
+    bool has_best_model() const;
+
+    float best_eval_loss() const;
+
+    // Restores best model parameters if available.
+    void restore_best_model();
+
+    // --------------------------------------------------------
+    // CHECKPOINT
+    // --------------------------------------------------------
+
+    // Save model, optimizer and trainer state.
+    void save_checkpoint(
+        const std::string& path
+    ) const;
+
+    // Load model, optimizer and trainer state.
+    //
+    // Training will continue from the restored epoch/global
+    // step when fit() is called again.
+    void load_checkpoint(
+        const std::string& path
+    );
+
+    // --------------------------------------------------------
+    // STATE
+    // --------------------------------------------------------
 
     std::size_t current_epoch() const;
 
@@ -75,6 +254,21 @@ public:
 
 private:
 
+    float calculate_gradient_norm() const;
+
+    void clip_gradients(
+        float max_norm,
+        float current_norm
+    );
+
+    void snapshot_best_model();
+
+    bool check_early_stopping(
+        float eval_loss
+    );
+
+private:
+
     LanguageModel* model_;
 
     Optimizer* optimizer_;
@@ -86,7 +280,24 @@ private:
     std::size_t global_step_;
 
     TrainingMetrics last_metrics_;
+
+    TrainingHistory history_;
+
+    std::vector<TrainerCallback*> callbacks_;
+
+    bool has_best_model_;
+
+    float best_eval_loss_;
+
+    std::size_t bad_epochs_;
+
+    std::vector<std::vector<float>> best_parameters_;
+
 };
+
+// ============================================================
+// GENERATION
+// ============================================================
 
 struct GenerationConfig {
 
@@ -97,6 +308,7 @@ struct GenerationConfig {
     std::int64_t eos_token_id = -1;
 
     bool stop_on_eos = true;
+
 };
 
 Tensor generate(

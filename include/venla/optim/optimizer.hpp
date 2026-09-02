@@ -3,6 +3,8 @@
 #include "venla/tensor/tensor.hpp"
 
 #include <cstddef>
+#include <istream>
+#include <ostream>
 #include <unordered_map>
 #include <vector>
 
@@ -51,6 +53,22 @@ public:
 
     virtual void step() = 0;
 
+    // --------------------------------------------------------
+    // CHECKPOINT / SERIALIZATION
+    // --------------------------------------------------------
+
+    virtual const char* type_name() const = 0;
+
+    virtual void save_state(
+        std::ostream& stream
+    ) const = 0;
+
+    virtual void load_state(
+        std::istream& stream
+    ) = 0;
+
+    virtual float learning_rate() const = 0;
+
 protected:
 
     const std::vector<Tensor*>& parameters() const;
@@ -91,7 +109,17 @@ public:
 
     void step() override;
 
-    float learning_rate() const;
+    const char* type_name() const override;
+
+    float learning_rate() const override;
+
+    void save_state(
+        std::ostream& stream
+    ) const override;
+
+    void load_state(
+        std::istream& stream
+    ) override;
 
     float momentum() const;
 
@@ -145,7 +173,17 @@ public:
 
     void step() override;
 
-    float learning_rate() const;
+    const char* type_name() const override;
+
+    float learning_rate() const override;
+
+    void save_state(
+        std::ostream& stream
+    ) const override;
+
+    void load_state(
+        std::istream& stream
+    ) override;
 
     float beta1() const;
 

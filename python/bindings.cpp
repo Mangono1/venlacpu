@@ -692,7 +692,7 @@ PYBIND11_MODULE(_venlacpu, m) {
     // VERSION
     // ========================================================
 
-    m.attr("__version__") = "2.2.1";
+    m.attr("__version__") = "2.3.0";
 
     // ========================================================
     // DEVICE
@@ -2227,17 +2227,52 @@ PYBIND11_MODULE(_venlacpu, m) {
         )
         .def(
             "train_epoch",
-            &venla::Trainer::train_epoch
+            static_cast<venla::TrainingMetrics (venla::Trainer::*)(
+                const venla::CausalLMDataset&
+            )>(&venla::Trainer::train_epoch)
         )
         .def(
             "fit",
-            &venla::Trainer::fit
+            static_cast<venla::TrainingMetrics (venla::Trainer::*)(
+                const venla::CausalLMDataset&
+            )>(&venla::Trainer::fit)
+        )
+        .def(
+            "fit",
+            static_cast<venla::TrainingMetrics (venla::Trainer::*)(
+                const venla::CausalLMDataset&,
+                const venla::CausalLMDataset&
+            )>(&venla::Trainer::fit)
         )
         .def(
             "evaluate",
             &venla::Trainer::evaluate
         )
         .def(
+            "add_callback",
+            &venla::Trainer::add_callback
+        )
+        .def(
+            "clear_callbacks",
+            &venla::Trainer::clear_callbacks
+        )
+        .def(
+            "history",
+            &venla::Trainer::history,
+            py::return_value_policy::reference_internal
+        )
+        .def(
+            "has_best_model",
+            &venla::Trainer::has_best_model
+        )
+        .def(
+            "best_eval_loss",
+            &venla::Trainer::best_eval_loss
+        )
+        .def(
+            "restore_best_model",
+            &venla::Trainer::restore_best_model
+        ).def(
             "current_epoch",
             &venla::Trainer::current_epoch
         )
@@ -2259,12 +2294,22 @@ PYBIND11_MODULE(_venlacpu, m) {
             "optimizer",
             &venla::Trainer::optimizer,
             py::return_value_policy::reference
-        )
-        .def(
+        ).def(
             "config",
             &venla::Trainer::config,
             py::return_value_policy::reference_internal
-        );
+        )
+        .def(
+            "save_checkpoint",
+            &venla::Trainer::save_checkpoint,
+            py::arg("path")
+        )
+        .def(
+            "load_checkpoint",
+            &venla::Trainer::load_checkpoint,
+            py::arg("path")
+        )
+;
 
     // ========================================================
     // GENERATION CONFIG

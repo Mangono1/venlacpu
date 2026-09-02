@@ -1,11 +1,119 @@
 #include "venla/optim/optimizer.hpp"
 
+#include <cstdint>
+#include <limits>
+#include <stdexcept>
+
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <utility>
 
 namespace venla {
+
+namespace {
+
+template <typename T>
+void write_optimizer_value(
+    std::ostream& stream,
+    const T& value
+) {
+    stream.write(
+        reinterpret_cast<const char*>(&value),
+        sizeof(T)
+    );
+
+    if (!stream) {
+        throw std::runtime_error(
+            "Failed to write optimizer checkpoint state"
+        );
+    }
+}
+
+template <typename T>
+T read_optimizer_value(
+    std::istream& stream
+) {
+    T value{};
+
+    stream.read(
+        reinterpret_cast<char*>(&value),
+        sizeof(T)
+    );
+
+    if (!stream) {
+        throw std::runtime_error(
+            "Failed to read optimizer checkpoint state"
+        );
+    }
+
+    return value;
+}
+
+void write_optimizer_vector(
+    std::ostream& stream,
+    const std::vector<float>& values
+) {
+    const std::uint64_t size =
+        static_cast<std::uint64_t>(values.size());
+
+    write_optimizer_value(stream, size);
+
+    if (size > 0) {
+        stream.write(
+            reinterpret_cast<const char*>(values.data()),
+            static_cast<std::streamsize>(
+                size * sizeof(float)
+            )
+        );
+    }
+
+    if (!stream) {
+        throw std::runtime_error(
+            "Failed to write optimizer vector"
+        );
+    }
+}
+
+std::vector<float> read_optimizer_vector(
+    std::istream& stream
+) {
+    const std::uint64_t size =
+        read_optimizer_value<std::uint64_t>(stream);
+
+    if (size >
+        static_cast<std::uint64_t>(
+            std::numeric_limits<std::size_t>::max()
+        )) {
+        throw std::runtime_error(
+            "Optimizer vector size overflow"
+        );
+    }
+
+    std::vector<float> values(
+        static_cast<std::size_t>(size)
+    );
+
+    if (size > 0) {
+        stream.read(
+            reinterpret_cast<char*>(values.data()),
+            static_cast<std::streamsize>(
+                size * sizeof(float)
+            )
+        );
+    }
+
+    if (!stream) {
+        throw std::runtime_error(
+            "Failed to read optimizer vector"
+        );
+    }
+
+    return values;
+}
+
+}
+
 
 // ============================================================
 // VALIDATION
@@ -148,6 +256,103 @@ SGD::SGD(
 // ============================================================
 // SGD STEP
 // ============================================================
+
+const char* SGD::type_name() const {
+    return "SGD";
+}
+
+void SGD::save_state(
+    std::ostream& stream
+) const {
+    write_optimizer_value(
+        stream,
+        learning_rate_
+    );
+
+    write_optimizer_value(
+        stream,
+        momentum_
+    );
+
+    write_optimizer_value(
+        stream,
+        weight_decay_
+    );
+
+    const std::uint64_t parameter_count =
+        static_cast<std::uint64_t>(
+            parameters().size()
+        );
+
+    write_optimizer_value(
+        stream,
+        parameter_count
+    );
+
+    for (const Tensor* parameter : parameters()) {
+        auto it = momentum_buffers_.find(parameter);
+
+        const bool exists =
+            it != momentum_buffers_.end();
+
+        write_optimizer_value(
+            stream,
+            exists
+        );
+
+        if (exists) {
+            write_optimizer_vector(
+                stream,
+                it->second
+            );
+        }
+    }
+}
+
+void SGD::load_state(
+    std::istream& stream
+) {
+    learning_rate_ =
+        read_optimizer_value<float>(stream);
+
+    momentum_ =
+        read_optimizer_value<float>(stream);
+
+    weight_decay_ =
+        read_optimizer_value<float>(stream);
+
+    const std::uint64_t parameter_count =
+        read_optimizer_value<std::uint64_t>(stream);
+
+    if (parameter_count != parameters().size()) {
+        throw std::runtime_error(
+            "SGD checkpoint parameter count mismatch"
+        );
+    }
+
+    momentum_buffers_.clear();
+
+    for (Tensor* parameter : parameters()) {
+        const bool exists =
+            read_optimizer_value<bool>(stream);
+
+        if (!exists) {
+            continue;
+        }
+
+        std::vector<float> buffer =
+            read_optimizer_vector(stream);
+
+        if (buffer.size() != parameter->numel()) {
+            throw std::runtime_error(
+                "SGD momentum buffer size mismatch"
+            );
+        }
+
+        momentum_buffers_[parameter] =
+            std::move(buffer);
+    }
+}
 
 void SGD::step() {
 
@@ -322,6 +527,150 @@ Adam::Adam(
 // ============================================================
 // ADAM STEP
 // ============================================================
+
+const char* Adam::type_name() const {
+    return "Adam";
+}
+
+void Adam::save_state(
+    std::ostream& stream
+) const {
+    write_optimizer_value(
+        stream,
+        learning_rate_
+    );
+
+    write_optimizer_value(
+        stream,
+        beta1_
+    );
+
+    write_optimizer_value(
+        stream,
+        beta2_
+    );
+
+    write_optimizer_value(
+        stream,
+        epsilon_
+    );
+
+    write_optimizer_value(
+        stream,
+        weight_decay_
+    );
+
+    const std::uint64_t step =
+        static_cast<std::uint64_t>(
+            step_count_
+        );
+
+    write_optimizer_value(
+        stream,
+        step
+    );
+
+    const std::uint64_t parameter_count =
+        static_cast<std::uint64_t>(
+            parameters().size()
+        );
+
+    write_optimizer_value(
+        stream,
+        parameter_count
+    );
+
+    for (const Tensor* parameter : parameters()) {
+        auto it = states_.find(parameter);
+
+        const bool exists =
+            it != states_.end();
+
+        write_optimizer_value(
+            stream,
+            exists
+        );
+
+        if (!exists) {
+            continue;
+        }
+
+        write_optimizer_vector(
+            stream,
+            it->second.first_moment
+        );
+
+        write_optimizer_vector(
+            stream,
+            it->second.second_moment
+        );
+    }
+}
+
+void Adam::load_state(
+    std::istream& stream
+) {
+    learning_rate_ =
+        read_optimizer_value<float>(stream);
+
+    beta1_ =
+        read_optimizer_value<float>(stream);
+
+    beta2_ =
+        read_optimizer_value<float>(stream);
+
+    epsilon_ =
+        read_optimizer_value<float>(stream);
+
+    weight_decay_ =
+        read_optimizer_value<float>(stream);
+
+    const std::uint64_t step =
+        read_optimizer_value<std::uint64_t>(stream);
+
+    step_count_ =
+        static_cast<std::size_t>(step);
+
+    const std::uint64_t parameter_count =
+        read_optimizer_value<std::uint64_t>(stream);
+
+    if (parameter_count != parameters().size()) {
+        throw std::runtime_error(
+            "Adam checkpoint parameter count mismatch"
+        );
+    }
+
+    states_.clear();
+
+    for (Tensor* parameter : parameters()) {
+        const bool exists =
+            read_optimizer_value<bool>(stream);
+
+        if (!exists) {
+            continue;
+        }
+
+        State state;
+
+        state.first_moment =
+            read_optimizer_vector(stream);
+
+        state.second_moment =
+            read_optimizer_vector(stream);
+
+        if (
+            state.first_moment.size() != parameter->numel() ||
+            state.second_moment.size() != parameter->numel()
+        ) {
+            throw std::runtime_error(
+                "Adam optimizer state size mismatch"
+            );
+        }
+
+        states_[parameter] =
+            std::move(state);
+    }
+}
 
 void Adam::step() {
 

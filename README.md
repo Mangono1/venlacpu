@@ -141,7 +141,12 @@ VENLACPU begins with the low-level foundations and builds upward. The long-term 
 
 ## License
 
-The project is currently in alpha and the final public-release license is being finalized.
+VENLACPU is licensed under the **GNU Lesser General Public License v3.0
+(LGPL-3.0-only)**.
+
+See the [`LICENSE`](LICENSE) file for the complete license text.
+
+Copyright © 2026 Frandika Imam Arifin.
 
 ## Links
 

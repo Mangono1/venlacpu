@@ -2,7 +2,7 @@ import venlacpu
 
 
 def test_package_version():
-    assert venlacpu.__version__ == "2.2.1"
+    assert venlacpu.__version__ == "2.3.0"
 
 
 def test_native_available():

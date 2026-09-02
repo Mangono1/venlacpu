@@ -1,4 +1,5 @@
 """VENLACPU version information."""
 
-version = "2.2.1"
+version = "2.3.0"
 __version__ = version
+VERSION = version

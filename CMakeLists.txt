@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(VENLACPU
-    VERSION 2.2.1
+    VERSION 2.3.0
     LANGUAGES CXX
 )
 
@@ -751,6 +751,7 @@ target_sources(
     PRIVATE
         src/training/causal_lm.cpp
         src/training/trainer.cpp
+    src/training/checkpoint.cpp
 )
 
 add_executable(
@@ -929,3 +930,34 @@ if (VENLA_BUILD_PYTHON_BINDINGS)
     )
 
 endif()
+
+
+add_executable(
+    venlacpu_checkpoint_test
+    tests/training/test_checkpoint.cpp
+)
+target_link_libraries(
+    venlacpu_checkpoint_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_executable(
+    venlacpu_trainer_resume_test
+    tests/training/test_trainer_resume.cpp
+)
+target_link_libraries(
+    venlacpu_trainer_resume_test
+    PRIVATE
+        venlacpu_core
+)
+add_test(
+    NAME venlacpu_trainer_resume_test
+    COMMAND venlacpu_trainer_resume_test
+)
+
+target_link_libraries(
+    venlacpu_checkpoint_test
+    PRIVATE
+    venlacpu_core
+)
