@@ -302,6 +302,15 @@ Trainer::Trainer(
       best_parameters_() {
 
     validate_config(config_);
+
+    // Automatically register all model parameters with the
+    // optimizer used by this Trainer.
+    //
+    // Optimizer::add_parameter() is idempotent by Tensor address,
+    // so manually pre-registered parameters are not duplicated.
+    optimizer_->add_parameters(
+        model_->parameters()
+    );
 }
 
 void Trainer::add_callback(
