@@ -1,8 +1,10 @@
+#include <vector>
 #include <cassert>
 #include <cmath>
 #include <iostream>
 
 #include "venla/math/operations.hpp"
+#include "venla/math/simd.hpp"
 
 namespace {
 
@@ -19,7 +21,87 @@ void assert_close(
 
 } // namespace
 
+
+// ============================================================
+// SIMD KERNEL REGRESSION TEST
+// ============================================================
+
+static void test_simd_kernel() {
+
+    constexpr std::size_t SIZE = 37;
+
+    /*
+     * 37 deliberately exercises:
+     *
+     *   32 elements -> SIMD vector path
+     *    5 elements -> scalar remainder
+     *
+     * This verifies that the dispatcher handles
+     * both the vectorized block and the tail correctly.
+     */
+
+    std::vector<float> c(
+        SIZE,
+        1.0f
+    );
+
+    std::vector<float> b(
+        SIZE
+    );
+
+    for (std::size_t i = 0;
+         i < SIZE;
+         ++i) {
+
+        b[i] =
+            static_cast<float>(
+                (i % 7) + 1
+            );
+    }
+
+    venla::simd::accumulate_row(
+        c.data(),
+        b.data(),
+        2.0f,
+        SIZE
+    );
+
+    for (std::size_t i = 0;
+         i < SIZE;
+         ++i) {
+
+        const float expected =
+            1.0f +
+            2.0f * b[i];
+
+        assert(
+            std::abs(
+                c[i] - expected
+            ) < 1e-5f
+        );
+    }
+
+    /*
+     * Also test zero-length input.
+     */
+
+    venla::simd::accumulate_row(
+        c.data(),
+        b.data(),
+        5.0f,
+        0
+    );
+
+    std::cout
+        << "[OK] SIMD backend: "
+        << venla::simd::backend_name()
+        << std::endl;
+}
+
 int main() {
+
+    test_simd_kernel();
+
 
     // ========================================================
     // ELEMENTWISE

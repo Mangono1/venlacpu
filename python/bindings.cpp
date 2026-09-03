@@ -683,6 +683,106 @@ py::object tensor_item(
 
 }
 
+
+// ============================================================
+// VENLACPU 2.4.0 — PYTHONIC SHAPE HELPERS
+// File-scope helpers for pybind11 Tensor/Shape APIs.
+// ============================================================
+
+
+static venla::Shape shape_from_python(
+    const py::object& value
+) {
+    if (py::isinstance<venla::Shape>(value)) {
+        return value.cast<venla::Shape>();
+    }
+
+    if (
+        !py::isinstance<py::list>(value) &&
+        !py::isinstance<py::tuple>(value)
+    ) {
+        throw py::type_error(
+            "shape must be a venlacpu.Shape, list, or tuple"
+        );
+    }
+
+    py::sequence sequence =
+        value.cast<py::sequence>();
+
+    std::vector<std::size_t> dimensions;
+
+    dimensions.reserve(
+        static_cast<std::size_t>(
+            py::len(sequence)
+        )
+    );
+
+    for (py::handle item : sequence) {
+
+        if (!py::isinstance<py::int_>(item)) {
+            throw py::type_error(
+                "shape dimensions must be integers"
+            );
+        }
+
+        const auto dimension =
+            item.cast<std::int64_t>();
+
+        if (dimension < 0) {
+            throw py::value_error(
+                "shape dimensions must be non-negative"
+            );
+        }
+
+        dimensions.push_back(
+            static_cast<std::size_t>(dimension)
+        );
+    }
+
+    return venla::Shape(dimensions);
+}
+
+
+static venla::Tensor tensor_zeros_python(
+    const py::object& shape,
+    venla::DType dtype,
+    const venla::Device& device
+) {
+    return venla::Tensor::zeros(
+        shape_from_python(shape),
+        dtype,
+        device
+    );
+}
+
+
+static venla::Tensor tensor_ones_python(
+    const py::object& shape,
+    venla::DType dtype,
+    const venla::Device& device
+) {
+    return venla::Tensor::ones(
+        shape_from_python(shape),
+        dtype,
+        device
+    );
+}
+
+
+static venla::Tensor tensor_empty_python(
+    const py::object& shape,
+    venla::DType dtype,
+    const venla::Device& device
+) {
+    return venla::Tensor::empty(
+        shape_from_python(shape),
+        dtype,
+        device
+    );
+}
+
+
+
 PYBIND11_MODULE(_venlacpu, m) {
 
     m.doc() =
@@ -692,7 +792,7 @@ PYBIND11_MODULE(_venlacpu, m) {
     // VERSION
     // ========================================================
 
-    m.attr("__version__") = "2.3.2";
+    m.attr("__version__") = "2.4.0";
 
     // ========================================================
     // DEVICE
@@ -890,12 +990,26 @@ PYBIND11_MODULE(_venlacpu, m) {
     // TENSOR
     // ========================================================
 
+
     py::class_<venla::Tensor>(
         m,
         "Tensor"
     )
         .def(
             py::init<>()
+        )
+        .def(
+            "__len__",
+            [](const venla::Tensor& tensor) -> std::size_t {
+
+                if (tensor.ndim() == 0) {
+                    throw py::type_error(
+                        "len() of a scalar tensor"
+                    );
+                }
+
+                return tensor.shape()[0];
+            }
         )
         .def(
             py::init<
@@ -909,45 +1023,21 @@ PYBIND11_MODULE(_venlacpu, m) {
         )
         .def_static(
             "zeros",
-            [](const venla::Shape& shape,
-               venla::DType dtype,
-               const venla::Device& device) {
-                return venla::Tensor::zeros(
-                    shape,
-                    dtype,
-                    device
-                );
-            },
+            &tensor_zeros_python,
             py::arg("shape"),
             py::arg("dtype") = venla::DType::Float32,
             py::arg("device") = venla::Device::cpu()
         )
         .def_static(
             "ones",
-            [](const venla::Shape& shape,
-               venla::DType dtype,
-               const venla::Device& device) {
-                return venla::Tensor::ones(
-                    shape,
-                    dtype,
-                    device
-                );
-            },
+            &tensor_ones_python,
             py::arg("shape"),
             py::arg("dtype") = venla::DType::Float32,
             py::arg("device") = venla::Device::cpu()
         )
         .def_static(
             "empty",
-            [](const venla::Shape& shape,
-               venla::DType dtype,
-               const venla::Device& device) {
-                return venla::Tensor::empty(
-                    shape,
-                    dtype,
-                    device
-                );
-            },
+            &tensor_empty_python,
             py::arg("shape"),
             py::arg("dtype") = venla::DType::Float32,
             py::arg("device") = venla::Device::cpu()
@@ -1007,51 +1097,73 @@ PYBIND11_MODULE(_venlacpu, m) {
                 &venla::Tensor::backward
             )
         )
-        .def(
+        .def_property_readonly(
             "shape",
-            &venla::Tensor::shape,
-            py::return_value_policy::reference_internal
+            [](const venla::Tensor& tensor) {
+                const auto& dimensions =
+                    tensor.shape().dimensions();
+
+                py::tuple result(dimensions.size());
+
+                for (std::size_t i = 0;
+                     i < dimensions.size();
+                     ++i) {
+                    result[i] = py::int_(dimensions[i]);
+                }
+
+                return result;
+            }
         )
-        .def(
+        .def_property_readonly(
             "stride",
-            &venla::Tensor::stride,
-            py::return_value_policy::reference_internal
+            [](const venla::Tensor& tensor) {
+                const auto& values =
+                    tensor.stride().values();
+
+                py::tuple result(values.size());
+
+                for (std::size_t i = 0;
+                     i < values.size();
+                     ++i) {
+                    result[i] = py::int_(values[i]);
+                }
+
+                return result;
+            }
         )
-        .def(
+        .def_property_readonly(
             "dtype",
             &venla::Tensor::dtype
         )
-        .def(
+        .def_property_readonly(
             "device",
-            &venla::Tensor::device,
-            py::return_value_policy::reference_internal
+            &venla::Tensor::device
         )
-        .def(
+        .def_property_readonly(
             "ndim",
             &venla::Tensor::ndim
         )
-        .def(
+        .def_property_readonly(
             "rank",
             &venla::Tensor::rank
         )
-        .def(
+        .def_property_readonly(
             "numel",
             &venla::Tensor::numel
         )
-        .def(
+        .def_property_readonly(
             "nbytes",
             &venla::Tensor::nbytes
         )
-        .def(
+        .def_property_readonly(
             "is_contiguous",
             &venla::Tensor::is_contiguous
         )
-        .def(
+        .def_property_readonly(
             "is_empty",
-            py::overload_cast<>(
-                &venla::Tensor::empty,
-                py::const_
-            )
+            [](const venla::Tensor& tensor) {
+                return tensor.empty();
+            }
         )
         .def(
             "info",
@@ -1076,10 +1188,10 @@ PYBIND11_MODULE(_venlacpu, m) {
         .def(
             "reshape",
             [](const venla::Tensor& tensor,
-               const venla::Shape& shape) {
+               const py::object& shape) {
                 return venla::reshape(
                     tensor,
-                    shape
+                    shape_from_python(shape)
                 );
             },
             py::arg("shape")
@@ -1354,75 +1466,100 @@ PYBIND11_MODULE(_venlacpu, m) {
 
         .def(
             "tolist",
-            [](const venla::Tensor& tensor) -> py::list {
+            [](const venla::Tensor& tensor) -> py::object {
 
-                py::list result;
+                const auto& shape =
+                    tensor.shape().dimensions();
 
                 const std::size_t size =
                     tensor.numel();
 
-                if (
-                    tensor.dtype() ==
-                    venla::DType::Int32
-                ) {
-                    const auto* data =
-                        tensor.data_as<std::int32_t>();
+                auto scalar_at =
+                    [&](std::size_t index) -> py::object {
+
+                    if (
+                        tensor.dtype() ==
+                        venla::DType::Int32
+                    ) {
+                        return py::cast(
+                            tensor.data_as<std::int32_t>()[index]
+                        );
+                    }
+
+                    if (
+                        tensor.dtype() ==
+                        venla::DType::Int64
+                    ) {
+                        return py::cast(
+                            tensor.data_as<std::int64_t>()[index]
+                        );
+                    }
+
+                    if (
+                        tensor.dtype() ==
+                        venla::DType::Float32
+                    ) {
+                        return py::cast(
+                            tensor.data_as<float>()[index]
+                        );
+                    }
+
+                    throw std::runtime_error(
+                        "Tensor.tolist(): unsupported dtype"
+                    );
+                };
+
+                if (shape.empty()) {
+
+                    if (size == 0) {
+                        return py::none();
+                    }
+
+                    return scalar_at(0);
+                }
+
+                auto make_nested =
+                    [&](const auto& self,
+                        std::size_t offset,
+                        std::size_t dim) -> py::object {
+
+                    if (dim == shape.size()) {
+                        return scalar_at(offset);
+                    }
+
+                    py::list result;
+
+                    std::size_t block_size = 1;
+
+                    for (
+                        std::size_t d = dim + 1;
+                        d < shape.size();
+                        ++d
+                    ) {
+                        block_size *= shape[d];
+                    }
 
                     for (
                         std::size_t i = 0;
-                        i < size;
+                        i < shape[dim];
                         ++i
                     ) {
                         result.append(
-                            data[i]
+                            self(
+                                self,
+                                offset + i * block_size,
+                                dim + 1
+                            )
                         );
                     }
 
                     return result;
-                }
+                };
 
-                if (
-                    tensor.dtype() ==
-                    venla::DType::Int64
-                ) {
-                    const auto* data =
-                        tensor.data_as<std::int64_t>();
-
-                    for (
-                        std::size_t i = 0;
-                        i < size;
-                        ++i
-                    ) {
-                        result.append(
-                            data[i]
-                        );
-                    }
-
-                    return result;
-                }
-
-                if (
-                    tensor.dtype() ==
-                    venla::DType::Float32
-                ) {
-                    const auto* data =
-                        tensor.data_as<float>();
-
-                    for (
-                        std::size_t i = 0;
-                        i < size;
-                        ++i
-                    ) {
-                        result.append(
-                            data[i]
-                        );
-                    }
-
-                    return result;
-                }
-
-                throw std::runtime_error(
-                    "Tensor.tolist(): unsupported dtype"
+                return make_nested(
+                    make_nested,
+                    0,
+                    0
                 );
             }
         )
@@ -1482,6 +1619,35 @@ PYBIND11_MODULE(_venlacpu, m) {
                 );
             }
         );
+
+
+    // ========================================================
+    // VENLACPU 2.4.0 — PYTHONIC TENSOR FACTORIES
+    // ========================================================
+
+    m.def(
+        "zeros",
+        &tensor_zeros_python,
+        py::arg("shape"),
+        py::arg("dtype") = venla::DType::Float32,
+        py::arg("device") = venla::Device::cpu()
+    );
+
+    m.def(
+        "ones",
+        &tensor_ones_python,
+        py::arg("shape"),
+        py::arg("dtype") = venla::DType::Float32,
+        py::arg("device") = venla::Device::cpu()
+    );
+
+    m.def(
+        "empty",
+        &tensor_empty_python,
+        py::arg("shape"),
+        py::arg("dtype") = venla::DType::Float32,
+        py::arg("device") = venla::Device::cpu()
+    );
 
     // ========================================================
     // TENSOR MATH API

@@ -2,7 +2,7 @@ import venlacpu
 
 
 def test_package_version():
-    assert venlacpu.__version__ == "2.3.2"
+    assert venlacpu.__version__ == "2.4.0"
 
 
 def test_native_available():
@@ -17,9 +17,9 @@ def test_tensor():
         venlacpu.Device.cpu(),
     )
 
-    assert tensor.shape().dimensions() == [2, 3]
-    assert tensor.numel() == 6
-    assert tensor.dtype() == venlacpu.DType.Float32
+    assert tensor.shape == (2, 3)
+    assert tensor.numel == 6
+    assert tensor.dtype == venlacpu.DType.Float32
 
 
 def test_causal_dataset():

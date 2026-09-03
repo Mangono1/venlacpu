@@ -17,8 +17,8 @@ def make_tensor(values, shape):
     return tensor
 
 
-def test_version_2_3_2():
-    assert venlacpu.__version__ == "2.3.2"
+def test_version_2_4_0():
+    assert venlacpu.__version__ == "2.4.0"
 
 
 def test_scalar_add():
@@ -133,12 +133,12 @@ def test_reshape_method():
         venlacpu.Shape([3, 2])
     )
 
-    assert y.shape().dimensions() == [
+    assert y.shape == (
         3,
         2,
-    ]
+    )
 
-    assert y.numel() == 6
+    assert y.numel == 6
 
 
 def test_flatten_method():
@@ -150,9 +150,9 @@ def test_flatten_method():
 
     y = x.flatten()
 
-    assert y.shape().dimensions() == [
+    assert y.shape == (
         24,
-    ]
+    )
 
 
 def test_unsqueeze_squeeze():
@@ -164,18 +164,18 @@ def test_unsqueeze_squeeze():
 
     y = x.unsqueeze(1)
 
-    assert y.shape().dimensions() == [
+    assert y.shape == (
         2,
         1,
         3,
-    ]
+    )
 
     z = y.squeeze(1)
 
-    assert z.shape().dimensions() == [
+    assert z.shape == (
         2,
         3,
-    ]
+    )
 
 
 def test_broadcasting():
@@ -193,18 +193,22 @@ def test_broadcasting():
 
     c = a + b
 
-    assert c.shape().dimensions() == [
+    assert c.shape == (
         2,
         3,
-    ]
+    )
 
     assert c.tolist() == [
-        2.0,
-        2.0,
-        2.0,
-        2.0,
-        2.0,
-        2.0,
+        [
+            2.0,
+            2.0,
+            2.0,
+        ],
+        [
+            2.0,
+            2.0,
+            2.0,
+        ],
     ]
 
 

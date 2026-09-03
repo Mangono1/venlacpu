@@ -6,7 +6,7 @@ constexpr int VERSION_MAJOR = 2;
 constexpr int VERSION_MINOR = 3;
 constexpr int VERSION_PATCH = 2;
 
-constexpr const char* VERSION_STRING = "2.3.2";
+constexpr const char* VERSION_STRING = "2.4.0";
 
 const char* version();
 

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(VENLACPU
-    VERSION 2.3.2
+    VERSION 2.4.0
     LANGUAGES CXX
 )
 
@@ -33,6 +33,7 @@ add_library(venlacpu_core STATIC
     src/autograd.cpp
 
     src/math/operations.cpp
+    src/math/simd.cpp
 
     src/nn/linear.cpp
     src/nn/activation.cpp

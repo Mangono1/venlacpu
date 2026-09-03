@@ -15,6 +15,21 @@ except ImportError:
     _native_available = False
 
 
+# ============================================================
+# VENLACPU 2.4.0 — PYTHONIC FACTORY FACADE
+# ============================================================
+
+if _native_available:
+    # Explicitly expose native factory functions.
+    #
+    # The native extension is named "_venlacpu", so these
+    # aliases make the public Python API explicit and stable.
+
+    zeros = _native.zeros
+    ones = _native.ones
+    empty = _native.empty
+
+
 def native_available():
     """Return True when the native VENLACPU extension is available."""
     return _native_available
@@ -73,6 +88,9 @@ __all__ = [
     "__version__",
     "generate_text",
     "native_available",
+    "zeros",
+    "ones",
+    "empty",
 ]
 
 if _native_available:
@@ -84,6 +102,9 @@ if _native_available:
             "version",
             "__version__",
             "generate_text",
+            "zeros",
+            "ones",
+            "empty",
         }
     ]
 

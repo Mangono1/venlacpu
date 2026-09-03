@@ -1,4 +1,5 @@
 #include "venla/math/operations.hpp"
+#include "venla/math/simd.hpp"
 #include "venla/autograd/ops.hpp"
 
 #include <algorithm>
@@ -959,9 +960,9 @@ Tensor matmul(
         );
     }
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // 1D x 1D
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     if (a.ndim() == 1 &&
         b.ndim() == 1) {
@@ -1007,9 +1008,9 @@ Tensor matmul(
         );
     }
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Batch dimensions
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     Shape a_batch;
 
@@ -1043,9 +1044,9 @@ Tensor matmul(
             b_batch
         );
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Output shape
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     std::vector<std::size_t>
         output_dimensions =
@@ -1082,9 +1083,36 @@ Tensor matmul(
     const std::size_t batch_count =
         batch_shape.numel();
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
+    // VENLACPU 2.4.0
+    //
+    // Cache-blocked GEMM
+    //
+    // The old kernel was:
+    //
+    //     row -> k -> column
+    //
+    // The new kernel tiles the matrix into cache-friendly blocks:
+    //
+    //     block_row
+    //       -> block_k
+    //           -> block_column
+    //               -> row
+    //                   -> k
+    //                       -> column
+    //
+    // This keeps portions of A, B and C hot in CPU cache.
+    //
+    // 32 is deliberately conservative for the first CPU kernel.
+    // It works well as a portable baseline and will later be tuned
+    // together with the SIMD implementation.
+    // ------------------------------------------------------------
+
+    constexpr std::size_t BLOCK = 32;
+
+    // ------------------------------------------------------------
     // Iterate batches
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     for (std::size_t batch_index = 0;
          batch_index < batch_count;
@@ -1097,12 +1125,15 @@ Tensor matmul(
                     batch_shape
                 );
 
-        // Map output batch coordinate
-        // to A batch coordinate.
+        // --------------------------------------------------------
+        // Map output batch coordinate to A.
+        // --------------------------------------------------------
+
         std::vector<std::size_t>
             a_batch_coordinates;
 
         if (a_batch.ndim() != 0) {
+
             const std::size_t offset =
                 batch_shape.ndim() -
                 a_batch.ndim();
@@ -1116,8 +1147,7 @@ Tensor matmul(
                  ++i) {
 
                 if (a_batch[i] == 1) {
-                    a_batch_coordinates[i] =
-                        0;
+                    a_batch_coordinates[i] = 0;
                 }
                 else {
                     a_batch_coordinates[i] =
@@ -1128,12 +1158,15 @@ Tensor matmul(
             }
         }
 
-        // Map output batch coordinate
-        // to B batch coordinate.
+        // --------------------------------------------------------
+        // Map output batch coordinate to B.
+        // --------------------------------------------------------
+
         std::vector<std::size_t>
             b_batch_coordinates;
 
         if (b_batch.ndim() != 0) {
+
             const std::size_t offset =
                 batch_shape.ndim() -
                 b_batch.ndim();
@@ -1147,8 +1180,7 @@ Tensor matmul(
                  ++i) {
 
                 if (b_batch[i] == 1) {
-                    b_batch_coordinates[i] =
-                        0;
+                    b_batch_coordinates[i] = 0;
                 }
                 else {
                     b_batch_coordinates[i] =
@@ -1159,11 +1191,14 @@ Tensor matmul(
             }
         }
 
-        // Convert batch coordinates to
-        // matrix base offsets.
+        // --------------------------------------------------------
+        // Convert batch coordinates into contiguous offsets.
+        // --------------------------------------------------------
+
         std::size_t a_batch_offset = 0;
 
         if (a_rank > 2) {
+
             std::vector<std::size_t>
                 full_a_coordinates =
                     a_batch_coordinates;
@@ -1181,6 +1216,7 @@ Tensor matmul(
         std::size_t b_batch_offset = 0;
 
         if (b_rank > 2) {
+
             std::vector<std::size_t>
                 full_b_coordinates =
                     b_batch_coordinates;
@@ -1195,42 +1231,23 @@ Tensor matmul(
                 );
         }
 
-        // ----------------------------------------------------
-        // Matrix multiplication
+        // --------------------------------------------------------
+        // 2D x 1D
         //
-        // CPU OPTIMIZATION: I-K-J LOOP ORDER
+        // A[M,K] @ x[K] -> y[M]
         //
-        // Previous order:
-        //
-        //     row -> column -> k
-        //
-        // Optimized order:
-        //
-        //     row -> k -> column
-        //
-        // For contiguous row-major matrices this gives:
-        //
-        //     A[row, k]       : reused across all columns
-        //     B[k, column]    : contiguous over column
-        //     C[row, column]  : contiguous over column
-        //
-        // This layout is also a better foundation for future
-        // OpenMP parallelization and ARM NEON vectorization.
-        // ----------------------------------------------------
+        // Keep this as a dedicated vector kernel.
+        // --------------------------------------------------------
 
-        for (std::size_t row = 0;
-             row < a_rows;
-             ++row) {
+        if (b_rank == 1) {
 
-            // ------------------------------------------------
-            // 2D/ND output row base
-            //
-            // For vector outputs (2D x 1D), the output is
-            // handled separately below because there is no
-            // column dimension in the result.
-            // ------------------------------------------------
+            std::vector<std::size_t>
+                output_coordinates =
+                    batch_coordinates;
 
-            if (b_rank == 1) {
+            for (std::size_t row = 0;
+                 row < a_rows;
+                 ++row) {
 
                 float value = 0.0f;
 
@@ -1255,130 +1272,179 @@ Tensor matmul(
                         b_data[b_index];
                 }
 
-                // ------------------------------------------------
-                // The generic output layout may contain
-                // broadcasted/multidimensional batch
-                // dimensions, so calculate the final index
-                // using the existing shape machinery.
-                // ------------------------------------------------
-
                 std::vector<std::size_t>
-                    output_coordinates =
-                        batch_coordinates;
+                    row_coordinates =
+                        output_coordinates;
 
                 if (a_rank != 1) {
-                    output_coordinates.push_back(
-                        row
-                    );
+                    row_coordinates.push_back(row);
                 }
 
                 const std::size_t
                     output_index =
                         ravel_index(
-                            output_coordinates,
+                            row_coordinates,
                             result.shape()
                         );
 
                 output[output_index] =
                     value;
-
-                continue;
             }
 
-            // ------------------------------------------------
-            // Matrix output.
-            //
-            // I-K-J:
-            //
-            //     row
-            //       k
-            //         column
-            //
-            // Instead of repeatedly loading/storing C for
-            // every k, accumulate directly into the output
-            // row. The output row is contiguous.
-            // ------------------------------------------------
+            continue;
+        }
 
-            std::vector<std::size_t>
-                row_output_coordinates =
-                    batch_coordinates;
+        // --------------------------------------------------------
+        // Matrix output.
+        //
+        // This includes:
+        //
+        //     2D x 2D
+        //     1D x 2D
+        //     ND x ND
+        //
+        // For 1D x 2D, A is treated as a 1 x K matrix.
+        // --------------------------------------------------------
 
-            if (a_rank != 1) {
-                row_output_coordinates.push_back(
-                    row
+        const std::size_t
+            effective_a_rows =
+                a_rank == 1
+                    ? 1
+                    : a_rows;
+
+        // --------------------------------------------------------
+        // Clear output matrix.
+        //
+        // We use += in the blocked kernel, so C must start at zero.
+        // --------------------------------------------------------
+
+        std::vector<std::size_t>
+            base_output_coordinates =
+                batch_coordinates;
+
+        if (a_rank != 1) {
+            base_output_coordinates.push_back(0);
+        }
+
+        base_output_coordinates.push_back(0);
+
+        const std::size_t
+            output_batch_offset =
+                ravel_index(
+                    base_output_coordinates,
+                    result.shape()
                 );
-            }
 
-            row_output_coordinates.push_back(
-                0
-            );
-
-            const std::size_t
-                output_row_offset =
-                    ravel_index(
-                        row_output_coordinates,
-                        result.shape()
-                    );
+        for (std::size_t row = 0;
+             row < effective_a_rows;
+             ++row) {
 
             float* output_row =
                 output +
-                output_row_offset;
-
-            // ------------------------------------------------
-            // Initialize output row.
-            // ------------------------------------------------
+                output_batch_offset +
+                row * b_cols;
 
             for (std::size_t column = 0;
                  column < b_cols;
                  ++column) {
 
-                output_row[column] =
-                    0.0f;
+                output_row[column] = 0.0f;
             }
+        }
 
-            // ------------------------------------------------
-            // I-K-J kernel.
-            // ------------------------------------------------
+        // --------------------------------------------------------
+        // CACHE-BLOCKED GEMM
+        //
+        // C[M,N] += A[M,K] * B[K,N]
+        //
+        // Loop hierarchy:
+        //
+        //   ii -> kk -> jj -> i -> k -> j
+        //
+        // A[i,k] is reused across a B block.
+        // B[k,j] is accessed contiguously across j.
+        // C[i,j] is accessed contiguously across j.
+        // --------------------------------------------------------
 
-            for (std::size_t k = 0;
-                 k < a_cols;
-                 ++k) {
+        for (std::size_t ii = 0;
+             ii < effective_a_rows;
+             ii += BLOCK) {
+
+            const std::size_t
+                i_end =
+                    std::min(
+                        ii + BLOCK,
+                        effective_a_rows
+                    );
+
+            for (std::size_t kk = 0;
+                 kk < a_cols;
+                 kk += BLOCK) {
 
                 const std::size_t
-                    a_index =
-                        a_rank == 1
-                            ? a_batch_offset + k
-                            : a_batch_offset +
-                              row * a_cols +
-                              k;
+                    k_end =
+                        std::min(
+                            kk + BLOCK,
+                            a_cols
+                        );
 
-                const float
-                    a_value =
-                        a_data[a_index];
+                for (std::size_t jj = 0;
+                     jj < b_cols;
+                     jj += BLOCK) {
 
-                const std::size_t
-                    b_row_offset =
-                        b_batch_offset +
-                        k * b_cols;
+                    const std::size_t
+                        j_end =
+                            std::min(
+                                jj + BLOCK,
+                                b_cols
+                            );
 
-                for (std::size_t column = 0;
-                     column < b_cols;
-                     ++column) {
+                    for (std::size_t i = ii;
+                         i < i_end;
+                         ++i) {
 
-                    output_row[column] +=
-                        a_value *
-                        b_data[
-                            b_row_offset +
-                            column
-                        ];
+                        float* c_row =
+                            output +
+                            output_batch_offset +
+                            i * b_cols;
+
+                        for (std::size_t k = kk;
+                             k < k_end;
+                             ++k) {
+
+                            const float
+                                a_value =
+                                    a_rank == 1
+                                        ? a_data[
+                                            a_batch_offset + k
+                                          ]
+                                        : a_data[
+                                            a_batch_offset +
+                                            i * a_cols +
+                                            k
+                                          ];
+
+                            const std::size_t
+                                b_row_offset =
+                                    b_batch_offset +
+                                    k * b_cols;
+
+                            venla::simd::accumulate_row(
+                                c_row + jj,
+                                b_data + b_row_offset + jj,
+                                a_value,
+                                j_end - jj
+                            );
+                        }
+                    }
                 }
             }
         }
     }
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // AUTOGRAD
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     if (a.requires_grad() ||
         b.requires_grad()) {
