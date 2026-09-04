@@ -7,7 +7,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "venlacpu"
-version = "3.0.0"
+version = "3.1.1"
 description = "CPU-first deep learning framework with a native C++17 core."
 readme = "README.md"
 requires-python = ">=3.9"

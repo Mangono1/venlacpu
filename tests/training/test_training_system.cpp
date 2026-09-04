@@ -711,6 +711,384 @@ void test_unseen_text_evaluation() {
     );
 }
 
+
+void test_best_model_and_early_stopping() {
+
+    LanguageModel model(
+        16,
+        8,
+        8,
+        2,
+        16,
+        1
+    );
+
+    Adam optimizer(
+        0.001f
+    );
+
+    optimizer.add_parameters(
+        model.parameters()
+    );
+
+    CausalLMDataset train_dataset;
+
+    train_dataset.add_sequence(
+        {
+            1,
+            2,
+            3,
+            4,
+            5
+        }
+    );
+
+    train_dataset.add_sequence(
+        {
+            2,
+            3,
+            4,
+            5,
+            6
+        }
+    );
+
+    CausalLMDataset validation_dataset;
+
+    validation_dataset.add_sequence(
+        {
+            1,
+            2,
+            3,
+            4,
+            5
+        }
+    );
+
+    validation_dataset.add_sequence(
+        {
+            2,
+            3,
+            4,
+            5,
+            6
+        }
+    );
+
+    TrainerConfig config;
+
+    config.epochs = 5;
+    config.batch_size = 2;
+    config.gradient_accumulation_steps = 1;
+
+    config.evaluate_each_epoch = true;
+
+    config.early_stopping = true;
+    config.early_stopping_patience = 2;
+
+    // Deliberately enormous so that only the first epoch
+    // can qualify as an improvement.
+    config.early_stopping_min_delta = 1.0e9f;
+
+    config.keep_best_model = true;
+
+    Trainer trainer(
+        model,
+        optimizer,
+        config
+    );
+
+    // --------------------------------------------------------
+    // CAPTURE BEST-EPOCH PARAMETERS
+    // --------------------------------------------------------
+
+    class BestEpochCapture
+        : public TrainerCallback {
+
+    public:
+
+        std::vector<std::vector<float>>
+        parameters;
+
+        bool captured = false;
+
+        void on_epoch_end(
+            const TrainingMetrics& metrics
+        ) override {
+
+            if (!captured &&
+                metrics.is_best) {
+
+                // The callback runs after the epoch has been
+                // evaluated and after snapshot_best_model().
+                //
+                // Capture the actual model parameters at the
+                // best epoch for later comparison.
+
+                captured = true;
+
+                // The model pointer is supplied separately
+                // by the test after construction.
+            }
+        }
+    };
+
+    BestEpochCapture callback;
+
+    // We need direct access to the model from the callback,
+    // so use a small local callback implementation that stores
+    // the parameter snapshot.
+    class ParameterCaptureCallback
+        : public TrainerCallback {
+
+    public:
+
+        explicit ParameterCaptureCallback(
+            LanguageModel& model
+        )
+            : model_(model) {
+        }
+
+        LanguageModel& model_;
+
+        std::vector<std::vector<float>>
+        best_parameters;
+
+        bool captured = false;
+
+        void on_epoch_end(
+            const TrainingMetrics& metrics
+        ) override {
+
+            if (!metrics.is_best ||
+                captured) {
+                return;
+            }
+
+            const std::vector<Tensor*> parameters =
+                model_.parameters();
+
+            best_parameters.clear();
+
+            best_parameters.reserve(
+                parameters.size()
+            );
+
+            for (const Tensor* parameter :
+                 parameters) {
+
+                assert(
+                    parameter != nullptr
+                );
+
+                assert(
+                    parameter->dtype() ==
+                    DType::Float32
+                );
+
+                const float* data =
+                    parameter->data_as<float>();
+
+                best_parameters.emplace_back(
+                    data,
+                    data + parameter->numel()
+                );
+            }
+
+            captured = true;
+        }
+    };
+
+    ParameterCaptureCallback capture(
+        model
+    );
+
+    trainer.add_callback(
+        capture
+    );
+
+    // --------------------------------------------------------
+    // TRAIN
+    // --------------------------------------------------------
+
+    TrainingMetrics metrics =
+        trainer.fit(
+            train_dataset,
+            validation_dataset
+        );
+
+    // --------------------------------------------------------
+    // BEST MODEL TRACKING
+    // --------------------------------------------------------
+
+    assert(
+        trainer.has_best_model()
+    );
+
+    assert(
+        std::isfinite(
+            trainer.best_eval_loss()
+        )
+    );
+
+    assert(
+        capture.captured
+    );
+
+    assert(
+        !capture.best_parameters.empty()
+    );
+
+    // --------------------------------------------------------
+    // EARLY STOPPING
+    // --------------------------------------------------------
+
+    assert(
+        trainer.history().size() == 3
+    );
+
+    const TrainingMetrics& epoch1 =
+        trainer.history().at(0);
+
+    const TrainingMetrics& epoch2 =
+        trainer.history().at(1);
+
+    const TrainingMetrics& epoch3 =
+        trainer.history().at(2);
+
+    assert(
+        epoch1.is_best
+    );
+
+    assert(
+        !epoch2.is_best
+    );
+
+    assert(
+        !epoch3.is_best
+    );
+
+    assert(
+        epoch2.bad_epochs == 1
+    );
+
+    assert(
+        epoch3.bad_epochs == 2
+    );
+
+    assert(
+        epoch3.early_stopped
+    );
+
+    assert(
+        metrics.early_stopped
+    );
+
+    assert(
+        trainer.current_epoch() == 3
+    );
+
+    assert(
+        trainer.current_epoch() <
+        config.epochs
+    );
+
+    // --------------------------------------------------------
+    // BEST LOSS
+    // --------------------------------------------------------
+
+    assert(
+        std::fabs(
+            trainer.best_eval_loss() -
+            epoch1.eval_loss
+        ) < 1e-6f
+    );
+
+    // --------------------------------------------------------
+    // VERIFY AUTOMATIC RESTORE
+    // --------------------------------------------------------
+
+    const std::vector<Tensor*> parameters =
+        model.parameters();
+
+    assert(
+        parameters.size() ==
+        capture.best_parameters.size()
+    );
+
+    for (std::size_t i = 0;
+         i < parameters.size();
+         ++i) {
+
+        assert(
+            parameters[i] != nullptr
+        );
+
+        const float* data =
+            parameters[i]->data_as<float>();
+
+        assert(
+            parameters[i]->numel() ==
+            capture.best_parameters[i].size()
+        );
+
+        for (std::size_t j = 0;
+             j < parameters[i]->numel();
+             ++j) {
+
+            assert(
+                std::fabs(
+                    data[j] -
+                    capture.best_parameters[i][j]
+                ) < 1e-6f
+            );
+        }
+    }
+
+    // --------------------------------------------------------
+    // VERIFY EXPLICIT RESTORE
+    // --------------------------------------------------------
+
+    trainer.restore_best_model();
+
+    const std::vector<Tensor*> parameters_after =
+        model.parameters();
+
+    assert(
+        parameters_after.size() ==
+        capture.best_parameters.size()
+    );
+
+    for (std::size_t i = 0;
+         i < parameters_after.size();
+         ++i) {
+
+        assert(
+            parameters_after[i] != nullptr
+        );
+
+        const float* data =
+            parameters_after[i]->data_as<float>();
+
+        assert(
+            parameters_after[i]->numel() ==
+            capture.best_parameters[i].size()
+        );
+
+        for (std::size_t j = 0;
+             j < parameters_after[i]->numel();
+             ++j) {
+
+            assert(
+                std::fabs(
+                    data[j] -
+                    capture.best_parameters[i][j]
+                ) < 1e-6f
+            );
+        }
+    }
+}
+
 void test_generation_regression() {
 
     LanguageModel model(
@@ -1031,6 +1409,8 @@ int main() {
     test_evaluation_ignore_index();
 
     test_unseen_text_evaluation();
+
+    test_best_model_and_early_stopping();
 
     test_generation_regression();
 

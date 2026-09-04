@@ -411,6 +411,8 @@ Trainer::Trainer(
       last_metrics_(),
       history_(),
       callbacks_(),
+      owned_callbacks_(),
+      has_best_eval_(false),
       has_best_model_(false),
       best_eval_loss_(HUGE_VALF),
       bad_epochs_(0),
@@ -434,8 +436,30 @@ void Trainer::add_callback(
     callbacks_.push_back(&callback);
 }
 
+void Trainer::add_owned_callback(
+    std::unique_ptr<TrainerCallback> callback
+) {
+    if (!callback) {
+        throw std::invalid_argument(
+            "Trainer::add_owned_callback: callback is null"
+        );
+    }
+
+    TrainerCallback* callback_ptr =
+        callback.get();
+
+    owned_callbacks_.push_back(
+        std::move(callback)
+    );
+
+    callbacks_.push_back(
+        callback_ptr
+    );
+}
+
 void Trainer::clear_callbacks() {
     callbacks_.clear();
+    owned_callbacks_.clear();
 }
 
 const TrainingHistory&
@@ -720,13 +744,18 @@ void Trainer::load_checkpoint(
     bad_epochs_ =
         metadata.bad_epochs;
 
-    // The checkpoint stores the active model parameters, but the
-    // current checkpoint format does not store the separate
-    // best-model parameter snapshot.
+    // The checkpoint stores the active model parameters and
+    // best evaluation loss, but the current checkpoint format
+    // does not store the separate best-model parameter snapshot.
     //
-    // Do not advertise a best model after loading because
-    // restore_best_model() would otherwise have no parameters
-    // to restore.
+    // Reconstruct the evaluation baseline from the persisted
+    // best_eval_loss_ value.
+    has_best_eval_ =
+        std::isfinite(best_eval_loss_);
+
+    // Do not advertise a restorable best model after loading
+    // because restore_best_model() would otherwise have no
+    // parameter snapshot to restore.
     has_best_model_ = false;
     best_parameters_.clear();
 
@@ -746,28 +775,16 @@ void Trainer::load_checkpoint(
 // ============================================================
 
 bool Trainer::check_early_stopping(
-    float eval_loss
+    float eval_loss,
+    bool improved
 ) {
+    (void)eval_loss;
+
     if (!config_.early_stopping) {
         return false;
     }
 
-    if (!std::isfinite(eval_loss)) {
-        ++bad_epochs_;
-        return bad_epochs_ >=
-            config_.early_stopping_patience;
-    }
-
-    if (!has_best_model_) {
-        bad_epochs_ = 0;
-        return false;
-    }
-
-    const float improvement =
-        best_eval_loss_ - eval_loss;
-
-    if (improvement >
-        config_.early_stopping_min_delta) {
+    if (improved) {
         bad_epochs_ = 0;
         return false;
     }
@@ -1360,15 +1377,37 @@ TrainingMetrics Trainer::fit(
         metrics.learning_rate =
             optimizer_->learning_rate();
 
-        const bool improved =
-            !has_best_model_ ||
-            evaluation.loss <
-                best_eval_loss_;
+        // ----------------------------------------------------
+        // BEST MODEL TRACKING
+        //
+        // A validation loss is considered an improvement only
+        // when it beats the previous best by min_delta.
+        //
+        // Example:
+        //   best = 1.00
+        //   min_delta = 0.10
+        //
+        // New loss must be < 0.90 to count as an improvement.
+        // ----------------------------------------------------
+
+        bool improved = false;
+
+        if (!has_best_eval_) {
+            improved =
+                std::isfinite(evaluation.loss);
+        } else if (std::isfinite(evaluation.loss)) {
+            improved =
+                evaluation.loss <
+                best_eval_loss_ -
+                    config_.early_stopping_min_delta;
+        }
 
         if (improved) {
 
             best_eval_loss_ =
                 evaluation.loss;
+
+            has_best_eval_ = true;
 
             metrics.is_best = true;
 
@@ -1377,15 +1416,32 @@ TrainingMetrics Trainer::fit(
             if (config_.keep_best_model) {
                 snapshot_best_model();
             }
+
         } else {
 
             metrics.is_best = false;
-
-            ++bad_epochs_;
         }
+
+        // ----------------------------------------------------
+        // EARLY STOPPING
+        //
+        // check_early_stopping() is the single source of truth
+        // for patience handling. It increments bad_epochs_ only
+        // when the current epoch does not improve enough.
+        // ----------------------------------------------------
+
+        const bool should_stop =
+            check_early_stopping(
+                evaluation.loss,
+                improved
+            );
 
         metrics.bad_epochs =
             bad_epochs_;
+
+        if (should_stop) {
+            metrics.early_stopped = true;
+        }
 
         history_.add(metrics);
 
@@ -1399,14 +1455,10 @@ TrainingMetrics Trainer::fit(
             }
         }
 
-        if (config_.early_stopping &&
-            bad_epochs_ >=
-                config_.early_stopping_patience) {
+        last_metrics_ =
+            metrics;
 
-            metrics.early_stopped = true;
-
-            last_metrics_ =
-                metrics;
+        if (should_stop) {
 
             if (config_.keep_best_model &&
                 has_best_model_) {
@@ -1415,9 +1467,6 @@ TrainingMetrics Trainer::fit(
 
             break;
         }
-
-        last_metrics_ =
-            metrics;
     }
 
     for (TrainerCallback* callback :

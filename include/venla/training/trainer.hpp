@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -217,6 +218,15 @@ public:
         TrainerCallback& callback
     );
 
+    // Adds a callback whose lifetime is owned by Trainer.
+    //
+    // This is primarily used by language bindings where the
+    // callback object is created dynamically (for example,
+    // a Python callback adapter).
+    void add_owned_callback(
+        std::unique_ptr<TrainerCallback> callback
+    );
+
     void clear_callbacks();
 
     // --------------------------------------------------------
@@ -281,7 +291,8 @@ private:
     void snapshot_best_model();
 
     bool check_early_stopping(
-        float eval_loss
+        float eval_loss,
+        bool improved
     );
 
 private:
@@ -300,8 +311,19 @@ private:
 
     TrainingHistory history_;
 
+    // Non-owning callbacks registered directly by C++ callers.
     std::vector<TrainerCallback*> callbacks_;
 
+    // Owned callbacks used by language bindings and other
+    // dynamically-created callback adapters.
+    std::vector<std::unique_ptr<TrainerCallback>> owned_callbacks_;
+
+    // Tracks whether a validation baseline has been
+    // established independently from parameter snapshotting.
+    bool has_best_eval_;
+
+    // Indicates whether a restorable best-parameter snapshot
+    // is currently available.
     bool has_best_model_;
 
     float best_eval_loss_;
