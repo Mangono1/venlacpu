@@ -74,6 +74,23 @@ struct TrainingMetrics {
 
     std::size_t batches = 0;
 
+    // Evaluation metrics.
+    //
+    // evaluated_tokens:
+    //     Number of non-ignored target tokens evaluated.
+    //
+    // correct_tokens:
+    //     Number of evaluated tokens whose predicted class
+    //     matches the target token.
+    //
+    // next_token_accuracy:
+    //     correct_tokens / evaluated_tokens.
+    std::size_t evaluated_tokens = 0;
+
+    std::size_t correct_tokens = 0;
+
+    float next_token_accuracy = 0.0f;
+
     std::size_t optimizer_steps = 0;
 
     std::size_t epoch = 0;

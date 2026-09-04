@@ -134,7 +134,7 @@ def test_trainer_updates_model_parameters_without_manual_registration():
 def main():
     print()
     print("=" * 72)
-    print(" VENLACPU 2.3.2 — TRAINER/OPTIMIZER REGRESSION TEST")
+    print(" VENLACPU 3.0.0 — TRAINER/OPTIMIZER REGRESSION TEST")
     print("=" * 72)
 
     test_trainer_automatically_registers_model_parameters()

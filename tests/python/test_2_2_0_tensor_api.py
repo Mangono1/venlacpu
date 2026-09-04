@@ -18,7 +18,7 @@ def make_tensor(values, shape):
 
 
 def test_version_2_4_0():
-    assert venlacpu.__version__ == "2.4.0"
+    assert venlacpu.__version__ == "3.0.0"
 
 
 def test_scalar_add():

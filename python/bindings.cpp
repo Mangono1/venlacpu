@@ -792,7 +792,7 @@ PYBIND11_MODULE(_venlacpu, m) {
     // VERSION
     // ========================================================
 
-    m.attr("__version__") = "2.4.0";
+    m.attr("__version__") = "3.0.0";
 
     // ========================================================
     // DEVICE
@@ -2403,6 +2403,18 @@ PYBIND11_MODULE(_venlacpu, m) {
         .def_readonly(
             "batches",
             &venla::TrainingMetrics::batches
+        )
+        .def_readonly(
+            "evaluated_tokens",
+            &venla::TrainingMetrics::evaluated_tokens
+        )
+        .def_readonly(
+            "correct_tokens",
+            &venla::TrainingMetrics::correct_tokens
+        )
+        .def_readonly(
+            "next_token_accuracy",
+            &venla::TrainingMetrics::next_token_accuracy
         )
         .def_readonly(
             "optimizer_steps",

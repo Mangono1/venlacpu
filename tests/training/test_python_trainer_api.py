@@ -133,6 +133,9 @@ def test_training_history_binding():
         "learning_rate",
         "tokens",
         "batches",
+        "evaluated_tokens",
+        "correct_tokens",
+        "next_token_accuracy",
         "optimizer_steps",
         "epoch",
         "global_step",
@@ -157,13 +160,13 @@ def test_training_history_binding():
     print("[OK] history.size() =", history.size())
     print("[OK] history.records() =", len(records))
     print("[OK] history.at() works")
-    print("[OK] TrainingMetrics exposes all 22 fields")
+    print("[OK] TrainingMetrics exposes all 25 fields")
 
 
 def main():
     print()
     print("=" * 72)
-    print(" VENLACPU 2.3.1 — PYTHON TRAINER API REGRESSION TEST")
+    print(" VENLACPU 3.0.0 — PYTHON TRAINER API REGRESSION TEST")
     print("=" * 72)
 
     test_trainer_keeps_dependencies_alive()

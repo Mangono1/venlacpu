@@ -14,6 +14,121 @@ namespace venla {
 
 namespace {
 
+std::int64_t read_trainer_target(
+    const Tensor& targets,
+    std::size_t index
+) {
+    if (targets.dtype() == DType::Int32) {
+        return static_cast<std::int64_t>(
+            targets.data_as<std::int32_t>()[index]
+        );
+    }
+
+    if (targets.dtype() == DType::Int64) {
+        return targets.data_as<std::int64_t>()[index];
+    }
+
+    throw std::runtime_error(
+        "Trainer evaluation: targets must be Int32 or Int64"
+    );
+}
+
+void accumulate_next_token_accuracy(
+    const Tensor& logits,
+    const Tensor& targets,
+    std::int64_t ignore_index,
+    std::size_t& correct_tokens,
+    std::size_t& evaluated_tokens
+) {
+    if (logits.dtype() != DType::Float32) {
+        throw std::runtime_error(
+            "Trainer evaluation: logits must be Float32"
+        );
+    }
+
+    if (logits.ndim() < 2) {
+        throw std::runtime_error(
+            "Trainer evaluation: logits must have at least 2 dimensions"
+        );
+    }
+
+    const std::size_t vocab_size =
+        logits.shape()[logits.ndim() - 1];
+
+    if (vocab_size == 0) {
+        throw std::runtime_error(
+            "Trainer evaluation: vocabulary size is zero"
+        );
+    }
+
+    const std::size_t token_count =
+        targets.numel();
+
+    const std::size_t expected_logits =
+        token_count * vocab_size;
+
+    if (logits.numel() != expected_logits) {
+        throw std::runtime_error(
+            "Trainer evaluation: logits/targets size mismatch"
+        );
+    }
+
+    const float* logits_data =
+        logits.data_as<float>();
+
+    for (std::size_t token = 0;
+         token < token_count;
+         ++token) {
+
+        const std::int64_t target =
+            read_trainer_target(
+                targets,
+                token
+            );
+
+        if (target == ignore_index) {
+            continue;
+        }
+
+        if (target < 0 ||
+            target >= static_cast<std::int64_t>(vocab_size)) {
+
+            throw std::out_of_range(
+                "Trainer evaluation: target index out of range"
+            );
+        }
+
+        const std::size_t offset =
+            token * vocab_size;
+
+        std::size_t predicted = 0;
+
+        float best_logit =
+            logits_data[offset];
+
+        for (std::size_t j = 1;
+             j < vocab_size;
+             ++j) {
+
+            const float value =
+                logits_data[offset + j];
+
+            if (value > best_logit) {
+                best_logit = value;
+                predicted = j;
+            }
+        }
+
+        ++evaluated_tokens;
+
+        if (predicted ==
+            static_cast<std::size_t>(target)) {
+
+            ++correct_tokens;
+        }
+    }
+}
+
 void validate_config(
     const TrainerConfig& config
 ) {
@@ -955,6 +1070,14 @@ TrainingMetrics Trainer::evaluate(
                 batch.input
             );
 
+        accumulate_next_token_accuracy(
+            logits,
+            batch.targets,
+            config_.ignore_index,
+            metrics.correct_tokens,
+            metrics.evaluated_tokens
+        );
+
         Tensor loss =
             loss_function.forward(
                 logits,
@@ -993,6 +1116,18 @@ TrainingMetrics Trainer::evaluate(
         safe_perplexity(
             metrics.loss
         );
+
+    if (metrics.evaluated_tokens != 0) {
+        metrics.next_token_accuracy =
+            static_cast<float>(
+                static_cast<double>(
+                    metrics.correct_tokens
+                ) /
+                static_cast<double>(
+                    metrics.evaluated_tokens
+                )
+            );
+    }
 
     metrics.global_step =
         global_step_;

@@ -308,6 +308,55 @@ void test_evaluation() {
         metrics.tokens > 0
     );
 
+    // v3.0.0 evaluation metrics.
+    //
+    // For causal LM evaluation, every non-ignored target
+    // contributes exactly one evaluated token.
+    assert(
+        metrics.evaluated_tokens ==
+        metrics.tokens
+    );
+
+    assert(
+        metrics.correct_tokens <=
+        metrics.evaluated_tokens
+    );
+
+    assert(
+        metrics.evaluated_tokens > 0
+    );
+
+    assert(
+        std::isfinite(
+            metrics.next_token_accuracy
+        )
+    );
+
+    assert(
+        metrics.next_token_accuracy >= 0.0f
+    );
+
+    assert(
+        metrics.next_token_accuracy <= 1.0f
+    );
+
+    const float expected_accuracy =
+        static_cast<float>(
+            static_cast<double>(
+                metrics.correct_tokens
+            ) /
+            static_cast<double>(
+                metrics.evaluated_tokens
+            )
+        );
+
+    assert(
+        std::fabs(
+            metrics.next_token_accuracy -
+            expected_accuracy
+        ) < 1e-6f
+    );
+
     assert(
         std::isfinite(
             metrics.loss
@@ -317,6 +366,594 @@ void test_evaluation() {
     assert(
         metrics.optimizer_steps == 0
     );
+}
+
+void test_evaluation_ignore_index() {
+
+    LanguageModel model(
+        16,
+        8,
+        8,
+        2,
+        16,
+        1
+    );
+
+    Adam optimizer(
+        0.001f
+    );
+
+    optimizer.add_parameters(
+        model.parameters()
+    );
+
+    CausalLMDataset dataset;
+
+    // Different sequence lengths force padding in the batch.
+    //
+    // Sequence 1: 4 tokens -> 3 valid targets
+    // Sequence 2: 2 tokens -> 1 valid target
+    //
+    // Total valid target tokens = 4.
+    dataset.add_sequence(
+        {
+            1,
+            2,
+            3,
+            4
+        }
+    );
+
+    dataset.add_sequence(
+        {
+            2,
+            3
+        }
+    );
+
+    TrainerConfig config;
+
+    config.batch_size = 2;
+    config.ignore_index = -100;
+
+    Trainer trainer(
+        model,
+        optimizer,
+        config
+    );
+
+    CausalLMBatch batch =
+        dataset.batch(
+            0,
+            2
+        );
+
+    // The batch contains:
+    //
+    // row 0: 3 valid targets
+    // row 1: 1 valid target + 2 ignored targets
+    assert(
+        batch.valid_tokens == 4
+    );
+
+    assert(
+        batch.targets.numel() == 6
+    );
+
+    const std::int64_t* targets =
+        batch.targets.data_as<std::int64_t>();
+
+    std::size_t ignored_targets = 0;
+
+    for (std::size_t i = 0;
+         i < batch.targets.numel();
+         ++i) {
+
+        if (targets[i] ==
+            config.ignore_index) {
+
+            ++ignored_targets;
+        }
+    }
+
+    assert(
+        ignored_targets == 2
+    );
+
+    TrainingMetrics metrics =
+        trainer.evaluate(
+            dataset
+        );
+
+    // Accuracy must ignore padded target positions.
+    assert(
+        metrics.tokens == 4
+    );
+
+    assert(
+        metrics.evaluated_tokens == 4
+    );
+
+    assert(
+        metrics.correct_tokens <=
+        metrics.evaluated_tokens
+    );
+
+    assert(
+        std::isfinite(
+            metrics.next_token_accuracy
+        )
+    );
+
+    assert(
+        metrics.next_token_accuracy >= 0.0f
+    );
+
+    assert(
+        metrics.next_token_accuracy <= 1.0f
+    );
+
+    const float expected_accuracy =
+        static_cast<float>(
+            static_cast<double>(
+                metrics.correct_tokens
+            ) /
+            static_cast<double>(
+                metrics.evaluated_tokens
+            )
+        );
+
+    assert(
+        std::fabs(
+            metrics.next_token_accuracy -
+            expected_accuracy
+        ) < 1e-6f
+    );
+}
+
+void test_unseen_text_evaluation() {
+
+    LanguageModel model(
+        16,
+        8,
+        8,
+        2,
+        16,
+        1
+    );
+
+    Adam optimizer(
+        0.001f
+    );
+
+    optimizer.add_parameters(
+        model.parameters()
+    );
+
+    // --------------------------------------------------
+    // TRAIN DATA
+    //
+    // This dataset is the ONLY dataset passed to fit().
+    // --------------------------------------------------
+    CausalLMDataset train_dataset;
+
+    train_dataset.add_sequence(
+        {
+            1,
+            2,
+            3,
+            4,
+            5
+        }
+    );
+
+    train_dataset.add_sequence(
+        {
+            2,
+            3,
+            4,
+            5,
+            6
+        }
+    );
+
+    train_dataset.add_sequence(
+        {
+            3,
+            4,
+            5,
+            6,
+            7
+        }
+    );
+
+    // --------------------------------------------------
+    // UNSEEN DATA
+    //
+    // These sequences are intentionally different from
+    // the training sequences and are never passed to fit().
+    // --------------------------------------------------
+    CausalLMDataset unseen_dataset;
+
+    unseen_dataset.add_sequence(
+        {
+            8,
+            9,
+            10,
+            11
+        }
+    );
+
+    unseen_dataset.add_sequence(
+        {
+            12,
+            13
+        }
+    );
+
+    TrainerConfig config;
+
+    config.epochs = 2;
+    config.batch_size = 2;
+    config.gradient_accumulation_steps = 1;
+    config.ignore_index = -100;
+
+    Trainer trainer(
+        model,
+        optimizer,
+        config
+    );
+
+    // Train ONLY on train_dataset.
+    TrainingMetrics train_metrics =
+        trainer.fit(
+            train_dataset
+        );
+
+    assert(
+        train_metrics.tokens > 0
+    );
+
+    assert(
+        train_metrics.batches > 0
+    );
+
+    assert(
+        trainer.current_epoch() == 2
+    );
+
+    // --------------------------------------------------
+    // EVALUATE UNSEEN DATA
+    // --------------------------------------------------
+    TrainingMetrics unseen_metrics =
+        trainer.evaluate(
+            unseen_dataset
+        );
+
+    // Unseen evaluation must produce real metrics.
+    assert(
+        unseen_metrics.tokens > 0
+    );
+
+    assert(
+        unseen_metrics.evaluated_tokens ==
+        unseen_metrics.tokens
+    );
+
+    assert(
+        unseen_metrics.correct_tokens <=
+        unseen_metrics.evaluated_tokens
+    );
+
+    assert(
+        unseen_metrics.evaluated_tokens > 0
+    );
+
+    assert(
+        std::isfinite(
+            unseen_metrics.loss
+        )
+    );
+
+    assert(
+        unseen_metrics.loss >= 0.0f
+    );
+
+    assert(
+        std::isfinite(
+            unseen_metrics.perplexity
+        )
+    );
+
+    assert(
+        unseen_metrics.perplexity > 0.0f
+    );
+
+    assert(
+        std::isfinite(
+            unseen_metrics.next_token_accuracy
+        )
+    );
+
+    assert(
+        unseen_metrics.next_token_accuracy >= 0.0f
+    );
+
+    assert(
+        unseen_metrics.next_token_accuracy <= 1.0f
+    );
+
+    const float expected_accuracy =
+        static_cast<float>(
+            static_cast<double>(
+                unseen_metrics.correct_tokens
+            ) /
+            static_cast<double>(
+                unseen_metrics.evaluated_tokens
+            )
+        );
+
+    assert(
+        std::fabs(
+            unseen_metrics.next_token_accuracy -
+            expected_accuracy
+        ) < 1e-6f
+    );
+
+    // Evaluation must not perform optimizer steps.
+    assert(
+        unseen_metrics.optimizer_steps == 0
+    );
+
+    // Evaluation must not advance the training epoch.
+    assert(
+        trainer.current_epoch() == 2
+    );
+}
+
+void test_generation_regression() {
+
+    LanguageModel model(
+        16,
+        16,
+        8,
+        2,
+        16,
+        1
+    );
+
+    Tensor prompt =
+        make_tokens(
+            {
+                1,
+                2,
+                3
+            }
+        );
+
+    // --------------------------------------------------
+    // DETERMINISTIC GENERATION
+    // --------------------------------------------------
+    GenerationConfig config;
+
+    config.max_new_tokens = 5;
+    config.temperature = 0.0f;
+    config.eos_token_id = -1;
+    config.stop_on_eos = true;
+
+    Tensor generated_a =
+        generate(
+            model,
+            prompt,
+            config
+        );
+
+    Tensor generated_b =
+        generate(
+            model,
+            prompt,
+            config
+        );
+
+    // Output must remain one-dimensional Int64.
+    assert(
+        generated_a.ndim() == 1
+    );
+
+    assert(
+        generated_a.dtype() ==
+        DType::Int64
+    );
+
+    assert(
+        generated_b.ndim() == 1
+    );
+
+    assert(
+        generated_b.dtype() ==
+        DType::Int64
+    );
+
+    // Prompt must always be preserved.
+    assert(
+        generated_a.shape()[0] >=
+        prompt.shape()[0]
+    );
+
+    assert(
+        generated_b.shape()[0] >=
+        prompt.shape()[0]
+    );
+
+    const std::int32_t* prompt_data =
+        prompt.data_as<std::int32_t>();
+
+    const std::int64_t* data_a =
+        generated_a.data_as<std::int64_t>();
+
+    const std::int64_t* data_b =
+        generated_b.data_as<std::int64_t>();
+
+    // Prompt tokens must remain unchanged.
+    assert(
+        data_a[0] ==
+        static_cast<std::int64_t>(
+            prompt_data[0]
+        )
+    );
+
+    assert(
+        data_a[1] ==
+        static_cast<std::int64_t>(
+            prompt_data[1]
+        )
+    );
+
+    assert(
+        data_a[2] ==
+        static_cast<std::int64_t>(
+            prompt_data[2]
+        )
+    );
+
+    assert(
+        data_b[0] ==
+        static_cast<std::int64_t>(
+            prompt_data[0]
+        )
+    );
+
+    assert(
+        data_b[1] ==
+        static_cast<std::int64_t>(
+            prompt_data[1]
+        )
+    );
+
+    assert(
+        data_b[2] ==
+        static_cast<std::int64_t>(
+            prompt_data[2]
+        )
+    );
+
+    // At most max_new_tokens may be appended.
+    assert(
+        generated_a.shape()[0] <=
+        prompt.shape()[0] +
+        config.max_new_tokens
+    );
+
+    assert(
+        generated_b.shape()[0] <=
+        prompt.shape()[0] +
+        config.max_new_tokens
+    );
+
+    // --------------------------------------------------
+    // DETERMINISM
+    //
+    // temperature = 0 means greedy deterministic
+    // generation. Repeated calls must produce identical
+    // token sequences.
+    // --------------------------------------------------
+    assert(
+        generated_a.numel() ==
+        generated_b.numel()
+    );
+
+    for (std::size_t i = 0;
+         i < generated_a.numel();
+         ++i) {
+
+        assert(
+            data_a[i] ==
+            data_b[i]
+        );
+    }
+
+    // --------------------------------------------------
+    // TOKEN VALIDITY
+    // --------------------------------------------------
+    for (std::size_t i = 0;
+         i < generated_a.numel();
+         ++i) {
+
+        assert(
+            data_a[i] >= 0
+        );
+
+        assert(
+            data_a[i] <
+            static_cast<std::int64_t>(
+                model.vocab_size()
+            )
+        );
+    }
+
+    // --------------------------------------------------
+    // PROMPT IMMUTABILITY
+    // --------------------------------------------------
+    const std::int32_t* prompt_after =
+        prompt.data_as<std::int32_t>();
+
+    assert(
+        prompt_after[0] == 1
+    );
+
+    assert(
+        prompt_after[1] == 2
+    );
+
+    assert(
+        prompt_after[2] == 3
+    );
+
+    // --------------------------------------------------
+    // ZERO NEW TOKENS
+    // --------------------------------------------------
+    GenerationConfig zero_config;
+
+    zero_config.max_new_tokens = 0;
+    zero_config.temperature = 0.0f;
+    zero_config.eos_token_id = -1;
+    zero_config.stop_on_eos = true;
+
+    Tensor zero_generated =
+        generate(
+            model,
+            prompt,
+            zero_config
+        );
+
+    assert(
+        zero_generated.ndim() == 1
+    );
+
+    assert(
+        zero_generated.dtype() ==
+        DType::Int64
+    );
+
+    assert(
+        zero_generated.numel() ==
+        prompt.numel()
+    );
+
+    const std::int64_t* zero_data =
+        zero_generated.data_as<std::int64_t>();
+
+    for (std::size_t i = 0;
+         i < prompt.numel();
+         ++i) {
+
+        assert(
+            zero_data[i] ==
+            static_cast<std::int64_t>(
+                prompt_after[i]
+            )
+        );
+    }
 }
 
 void test_generation() {
@@ -390,6 +1027,12 @@ int main() {
     test_training();
 
     test_evaluation();
+
+    test_evaluation_ignore_index();
+
+    test_unseen_text_evaluation();
+
+    test_generation_regression();
 
     test_generation();
 
