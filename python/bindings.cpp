@@ -21,6 +21,8 @@
 #include <fstream>
 #include <cstring>
 #include <vector>
+#include <memory>
+#include <utility>
 
 namespace py = pybind11;
 
@@ -107,6 +109,113 @@ std::vector<std::int64_t> tensor_to_int64(
         "tensor_to_int64: tensor must use Int32 or Int64"
     );
 }
+
+} // namespace
+
+// ============================================================
+// PYTHON TRAINER CALLBACK ADAPTER
+// ============================================================
+
+namespace {
+
+class PyTrainerCallback final
+    : public venla::TrainerCallback {
+public:
+    explicit PyTrainerCallback(py::object callback)
+        : callback_(std::move(callback)) {
+        if (callback_.is_none()) {
+            throw std::invalid_argument(
+                "VENLACPU: callback Python tidak boleh None."
+            );
+        }
+    }
+
+    ~PyTrainerCallback() override = default;
+
+    void on_train_begin() override {
+        invoke_no_args("on_train_begin");
+    }
+
+    void on_epoch_begin(
+        std::size_t epoch
+    ) override {
+        invoke_one_arg(
+            "on_epoch_begin",
+            py::int_(
+                static_cast<std::uint64_t>(epoch)
+            )
+        );
+    }
+
+    void on_batch_end(
+        const venla::TrainingMetrics& metrics
+    ) override {
+        invoke_one_arg(
+            "on_batch_end",
+            py::cast(metrics)
+        );
+    }
+
+    void on_epoch_end(
+        const venla::TrainingMetrics& metrics
+    ) override {
+        invoke_one_arg(
+            "on_epoch_end",
+            py::cast(metrics)
+        );
+    }
+
+    void on_train_end() override {
+        invoke_no_args("on_train_end");
+    }
+
+private:
+    py::object callback_;
+
+    bool has_named_hook(
+        const char* name
+    ) const {
+        return py::hasattr(
+            callback_,
+            name
+        );
+    }
+
+    void invoke_no_args(
+        const char* name
+    ) {
+        py::gil_scoped_acquire gil;
+
+        if (has_named_hook(name)) {
+            callback_.attr(name)();
+            return;
+        }
+
+        if (PyCallable_Check(callback_.ptr())) {
+            callback_();
+        }
+    }
+
+    void invoke_one_arg(
+        const char* name,
+        py::object argument
+    ) {
+        py::gil_scoped_acquire gil;
+
+        if (has_named_hook(name)) {
+            callback_.attr(name)(
+                std::move(argument)
+            );
+            return;
+        }
+
+        if (PyCallable_Check(callback_.ptr())) {
+            callback_(
+                std::move(argument)
+            );
+        }
+    }
+};
 
 } // namespace
 
@@ -792,7 +901,7 @@ PYBIND11_MODULE(_venlacpu, m) {
     // VERSION
     // ========================================================
 
-    m.attr("__version__") = "3.1.1";
+    m.attr("__version__") = "3.2.0";
 
     // ========================================================
     // DEVICE
@@ -2541,7 +2650,17 @@ PYBIND11_MODULE(_venlacpu, m) {
         )
         .def(
             "add_callback",
-            &venla::Trainer::add_callback
+            [](
+                venla::Trainer& trainer,
+                py::object callback
+            ) {
+                trainer.add_owned_callback(
+                    std::make_unique<PyTrainerCallback>(
+                        std::move(callback)
+                    )
+                );
+            },
+            py::arg("callback")
         )
         .def(
             "clear_callbacks",
