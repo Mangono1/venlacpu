@@ -867,6 +867,14 @@ TrainingMetrics Trainer::train_epoch(
         const float loss_value =
             read_loss(loss);
 
+        if (!std::isfinite(loss_value)) {
+            optimizer_->zero_grad();
+
+            throw std::runtime_error(
+                "Trainer: loss contains NaN or Inf"
+            );
+        }
+
         weighted_loss +=
             static_cast<double>(
                 loss_value

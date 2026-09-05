@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(VENLACPU
-    VERSION 3.2.0
+    VERSION 3.5.1
     LANGUAGES CXX
 )
 
@@ -771,6 +771,46 @@ add_test(
     COMMAND venlacpu_training_system_test
 )
 
+# ============================================================
+# TRAINER RELIABILITY
+# ============================================================
+
+add_executable(
+    venlacpu_trainer_reliability_test
+    tests/training/test_trainer_reliability.cpp
+)
+
+target_link_libraries(
+    venlacpu_trainer_reliability_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_trainer_reliability_test
+    COMMAND venlacpu_trainer_reliability_test
+)
+
+# ============================================================
+# TRAINER NON-FINITE LOSS REGRESSION
+# ============================================================
+
+add_executable(
+    venlacpu_trainer_nonfinite_loss_test
+    tests/training/test_trainer_nonfinite_loss.cpp
+)
+
+target_link_libraries(
+    venlacpu_trainer_nonfinite_loss_test
+    PRIVATE
+        venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_trainer_nonfinite_loss_test
+    COMMAND venlacpu_trainer_nonfinite_loss_test
+)
+
 
 # ============================================================
 # PYTHON BINDINGS
@@ -961,4 +1001,9 @@ target_link_libraries(
     venlacpu_checkpoint_test
     PRIVATE
     venlacpu_core
+)
+
+add_test(
+    NAME venlacpu_checkpoint_test
+    COMMAND venlacpu_checkpoint_test
 )
